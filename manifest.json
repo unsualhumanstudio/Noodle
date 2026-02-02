@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Noodle",
+  "description": "Highlight and save snippets from your conversations",
+  "version": "1.0.0",
+  "permissions": ["storage", "scripting"],
+  "host_permissions": ["https://claude.ai/*"],
+  "optional_host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "css": ["src/styles.css"],
+      "js": ["src/content.js"]
+    }
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

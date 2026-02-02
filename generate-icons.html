@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate Icons</title>
+</head>
+<body>
+  <h1>Claude Highlighter Icon Generator</h1>
+  <p>Right-click each canvas and "Save image as" to create the icon files:</p>
+
+  <div style="margin: 20px 0;">
+    <h3>icon16.png</h3>
+    <canvas id="icon16" width="16" height="16"></canvas>
+  </div>
+
+  <div style="margin: 20px 0;">
+    <h3>icon48.png</h3>
+    <canvas id="icon48" width="48" height="48"></canvas>
+  </div>
+
+  <div style="margin: 20px 0;">
+    <h3>icon128.png</h3>
+    <canvas id="icon128" width="128" height="128"></canvas>
+  </div>
+
+  <script>
+    function drawIcon(ctx, size) {
+      const scale = size / 16;
+
+      // Background circle
+      ctx.beginPath();
+      ctx.arc(size/2, size/2, size/2 - scale, 0, Math.PI * 2);
+      ctx.fillStyle = '#D2DBF2';
+      ctx.fill();
+
+      // Highlight lines
+      ctx.fillStyle = '#FED7CE';
+      ctx.fillRect(3 * scale, 5 * scale, 10 * scale, 2 * scale);
+
+      ctx.fillStyle = '#D2F2ED';
+      ctx.fillRect(3 * scale, 9 * scale, 7 * scale, 2 * scale);
+
+      // Pin emoji approximation
+      ctx.fillStyle = '#333';
+      ctx.font = `${6 * scale}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('📌', size/2, size/2 + 2*scale);
+    }
+
+    [16, 48, 128].forEach(size => {
+      const canvas = document.getElementById('icon' + size);
+      const ctx = canvas.getContext('2d');
+      drawIcon(ctx, size);
+    });
+  </script>
+</body>
+</html>
