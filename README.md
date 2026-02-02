@@ -102,7 +102,7 @@ Styling, color palette, typography, spacing, and component rules are documented 
 3. Click the refresh icon on the Noodle card.
 4. Reload any tabs where you use the extension (e.g. claude.ai).
 
-Built with 🧡 & [Claude](https://claude.ai) in Cursor.
+Built with 🧡 & [Claude Code](https://claude.ai).
 
 ## License
 
