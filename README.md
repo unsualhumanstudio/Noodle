@@ -106,4 +106,4 @@ Built with 🧡 & [Claude Code](https://claude.ai).
 
 ## License
 
-MIT. Copyright © 2025 Diana Valdes (Unusual Human Studio). See [LICENSE](./LICENSE) for full terms.
+MIT. Copyright © 2025 Diana Valdes (Unusual Human Studio). See [LICENSE](.MIT License) for full terms.
