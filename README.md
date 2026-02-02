@@ -2,9 +2,11 @@
 
 A Chrome extension that lets you highlight and save snippets from your Claude conversations (or any website) without breaking your flow.
 
+**Author:** Diana Valdes · [Unusual Human Studio](https://www.dianavaldes.com)
+
 ## About me
 
-I’m **Diana Valdes**, an AI experience product designer with an M.S. in integrated design, business and technology from the [University of Southern California Iovine & Young Academy](https://iovine-young.usc.edu/). I design, research and build interaction patterns for trustworthy human–AI collaboration. Noodle is one of those experiments—I hope others can take it further.
+I’m **Diana Valdes**, an AI experience product designer with an M.S. in Integrated Design, Business and Technology from the [University of Southern California Iovine & Young Academy](https://iovine-young.usc.edu/). I design, research and build interaction patterns for trustworthy human–AI collaboration. Noodle is one of those experiments—I hope others can take it further.
 
 I write about the intersection of AI, design and the craft of building in my Substack **[The Dinner Party](https://dianafromthedinnerparty.substack.com/)**. I also share findings and a pattern library on my site **[dianavaldes.com](https://www.dianavaldes.com)**.
 
@@ -102,4 +104,4 @@ Styling, color palette, typography, spacing, and component rules are documented 
 
 ## License
 
-MIT
+MIT. Copyright © 2025 Diana Valdes (Unusual Human Studio). See [LICENSE](./LICENSE) for full terms.
