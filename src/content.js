@@ -73,13 +73,17 @@
     function tryHighlight() {
       const range = findTextInPage(snippet.anchor);
       if (range) {
-        // Scroll to the text
-        const rect = range.getBoundingClientRect();
-        const absoluteTop = rect.top + window.scrollY;
-        window.scrollTo({
-          top: absoluteTop - (window.innerHeight / 3),
-          behavior: 'smooth'
-        });
+
+        // Create a temporary element to scroll to (handles nested scrollable containers)
+        const startContainer = range.startContainer;
+        const element = startContainer.nodeType === Node.TEXT_NODE
+          ? startContainer.parentElement
+          : startContainer;
+
+        // Scroll the element into view (works with nested scrollable containers like Claude's chat)
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
 
         // Apply a temporary "flash" highlight
         applyFlashHighlight(range, snippet.color);
@@ -467,6 +471,17 @@
             ${folder ? `<span class="snippet-folder">${escapeHtml(folder.name)}</span>` : ''}
           </div>
           <div class="claude-highlighter-snippet-text">${escapeHtml(snippet.text)}</div>
+          <div class="snippet-note-section" data-id="${snippet.id}">
+            ${snippet.note
+              ? `<div class="snippet-note-display">
+                  <div class="snippet-note-text">${escapeHtml(snippet.note)}</div>
+                  <button class="snippet-note-edit-btn" title="Edit note">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                  </button>
+                </div>`
+              : `<button class="snippet-add-note-btn">+ Add note</button>`
+            }
+          </div>
           <div class="claude-highlighter-snippet-meta">
             <div class="snippet-meta-left">
               <button class="snippet-source-link" data-url="${escapeHtml(snippet.url)}" data-id="${snippet.id}">
@@ -540,6 +555,25 @@
       });
       setupTooltip(link, 'Go to source');
     });
+
+    // Add note button handlers
+    container.querySelectorAll('.snippet-add-note-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const noteSection = e.target.closest('.snippet-note-section');
+        const snippetId = noteSection.dataset.id;
+        showNoteEditor(noteSection, snippetId, '');
+      });
+    });
+
+    // Edit note button handlers
+    container.querySelectorAll('.snippet-note-edit-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const noteSection = e.target.closest('.snippet-note-section');
+        const snippetId = noteSection.dataset.id;
+        const snippet = snippets.find(s => s.id === snippetId);
+        showNoteEditor(noteSection, snippetId, snippet?.note || '');
+      });
+    });
   }
 
   // Show folder picker dropdown
@@ -608,6 +642,66 @@
       snippet.folderId = folderId;
       saveSnippets();
       showToast(folderId ? 'Moved to folder' : 'Moved to Unfiled');
+    }
+  }
+
+  // Show note editor inline
+  function showNoteEditor(noteSection, snippetId, existingNote) {
+    noteSection.innerHTML = `
+      <div class="snippet-note-editor">
+        <textarea class="snippet-note-input" placeholder="Add a note...">${escapeHtml(existingNote)}</textarea>
+        <div class="snippet-note-editor-actions">
+          <span class="snippet-note-status"></span>
+          <button class="snippet-note-done-btn">Done</button>
+        </div>
+      </div>
+    `;
+
+    const textarea = noteSection.querySelector('.snippet-note-input');
+    const doneBtn = noteSection.querySelector('.snippet-note-done-btn');
+    const statusEl = noteSection.querySelector('.snippet-note-status');
+
+    textarea.focus();
+    // Move cursor to end of text
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    // Auto-save on typing (debounced)
+    let saveTimeout = null;
+    textarea.addEventListener('input', () => {
+      statusEl.textContent = 'Saving...';
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(() => {
+        saveNote(snippetId, textarea.value);
+        statusEl.textContent = 'Saved';
+        setTimeout(() => {
+          if (statusEl) statusEl.textContent = '';
+        }, 1500);
+      }, 500);
+    });
+
+    // Done button closes the editor
+    doneBtn.addEventListener('click', () => {
+      clearTimeout(saveTimeout);
+      saveNote(snippetId, textarea.value);
+      renderSnippets();
+    });
+
+    // Escape key closes the editor
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        clearTimeout(saveTimeout);
+        saveNote(snippetId, textarea.value);
+        renderSnippets();
+      }
+    });
+  }
+
+  // Save note to snippet
+  function saveNote(snippetId, noteText) {
+    const snippet = snippets.find(s => s.id === snippetId);
+    if (snippet) {
+      snippet.note = noteText.trim() || null;
+      chrome.storage.local.set({ claudeHighlights: snippets });
     }
   }
 
@@ -1059,36 +1153,65 @@
       });
     });
 
-    // Search for the text with context
+    // Normalize whitespace: treat newlines and multiple spaces as single space
+    const normalizeWS = (text) => text.replace(/[\r\n\t]+/g, ' ').replace(/ +/g, ' ');
+
     const searchText = anchor.text;
+    const normalizedSearch = normalizeWS(searchText);
+    const normalizedCombined = normalizeWS(combinedText);
+
+    // Build mapping from normalized positions back to original positions
+    const normToOrig = [];
+    let lastWasSpace = false;
+    for (let i = 0; i < combinedText.length; i++) {
+      const char = combinedText[i];
+      const isWS = /[\r\n\t ]/.test(char);
+
+      if (isWS) {
+        if (!lastWasSpace) {
+          normToOrig.push(i);
+          lastWasSpace = true;
+        }
+      } else {
+        normToOrig.push(i);
+        lastWasSpace = false;
+      }
+    }
+    normToOrig.push(combinedText.length); // End marker
+
     let searchStart = 0;
     let bestMatch = null;
     let bestScore = -1;
 
     while (true) {
-      const index = combinedText.indexOf(searchText, searchStart);
+      const index = normalizedCombined.indexOf(normalizedSearch, searchStart);
       if (index === -1) break;
 
       // Score this match based on prefix/suffix context
       let score = 0;
 
       if (anchor.prefix) {
-        const prefixInDoc = combinedText.substring(Math.max(0, index - anchor.prefix.length), index);
-        if (prefixInDoc.endsWith(anchor.prefix) || anchor.prefix.endsWith(prefixInDoc)) {
+        const normalizedPrefix = normalizeWS(anchor.prefix);
+        const prefixInDoc = normalizedCombined.substring(Math.max(0, index - normalizedPrefix.length), index);
+        if (prefixInDoc.endsWith(normalizedPrefix) || normalizedPrefix.endsWith(prefixInDoc)) {
           score += prefixInDoc.length;
         }
       }
 
       if (anchor.suffix) {
-        const suffixInDoc = combinedText.substring(index + searchText.length, index + searchText.length + anchor.suffix.length);
-        if (suffixInDoc.startsWith(anchor.suffix) || anchor.suffix.startsWith(suffixInDoc)) {
+        const normalizedSuffix = normalizeWS(anchor.suffix);
+        const suffixInDoc = normalizedCombined.substring(index + normalizedSearch.length, index + normalizedSearch.length + normalizedSuffix.length);
+        if (suffixInDoc.startsWith(normalizedSuffix) || normalizedSuffix.startsWith(suffixInDoc)) {
           score += suffixInDoc.length;
         }
       }
 
       if (score > bestScore || bestMatch === null) {
         bestScore = score;
-        bestMatch = { index, length: searchText.length };
+        // Map normalized positions back to original
+        const origStart = normToOrig[index] || 0;
+        const origEnd = normToOrig[index + normalizedSearch.length] || combinedText.length;
+        bestMatch = { index: origStart, length: origEnd - origStart };
       }
 
       searchStart = index + 1;

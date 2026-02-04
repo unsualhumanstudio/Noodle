@@ -1,5 +1,10 @@
 // Noodle - Background Service Worker
 
+// Sync storage flag with actual permission state on startup
+chrome.permissions.contains({ origins: ['<all_urls>'] }, (hasPermission) => {
+  chrome.storage.local.set({ noodleAllSites: hasPermission });
+});
+
 // Listen for messages from content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'requestAllSitesPermission') {
@@ -76,25 +81,25 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       return;
     }
 
-    // Check if all-sites mode is enabled
-    chrome.storage.local.get(['noodleAllSites'], (result) => {
-      if (result.noodleAllSites) {
-        // Check if we have permission
-        chrome.permissions.contains({
-          origins: ['<all_urls>']
-        }, (hasPermission) => {
-          if (hasPermission) {
-            // Check if already injected by checking for our element
-            chrome.scripting.executeScript({
-              target: { tabId },
-              func: () => !!document.querySelector('.claude-highlighter-toggle')
-            }).then((results) => {
-              if (results && results[0] && !results[0].result) {
-                injectIntoTab(tabId);
-              }
-            }).catch(() => {});
+    // Skip claude.ai - it's already handled by manifest content_scripts
+    if (tab.url.includes('claude.ai')) {
+      return;
+    }
+
+    // Check if we have all-sites permission (this is the source of truth)
+    chrome.permissions.contains({
+      origins: ['<all_urls>']
+    }, (hasPermission) => {
+      if (hasPermission) {
+        // Check if already injected by checking for our element
+        chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => !!document.querySelector('.claude-highlighter-toggle')
+        }).then((results) => {
+          if (results && results[0] && !results[0].result) {
+            injectIntoTab(tabId);
           }
-        });
+        }).catch(() => {});
       }
     });
   }
