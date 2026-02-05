@@ -26,15 +26,53 @@
   let activeFilter = 'all'; // 'all', 'blue', 'green', 'coral'
   let activeFolder = 'all'; // 'all' or folder id
 
+  // Container for our UI (protected from React)
+  let noodleRoot = null;
+
   // Initialize
   function init() {
-    loadData(() => {
-      // After data is loaded, check if we need to highlight something
-      checkForHighlightRequest();
-    });
-    createSidebar();
-    createToggle();
-    setupSelectionListener();
+    try {
+      // Create a protected container for our UI
+      createNoodleRoot();
+      createSidebar();
+      createToggle();
+      setupSelectionListener();
+      loadData(() => {
+        // After data is loaded, check if we need to highlight something
+        checkForHighlightRequest();
+      });
+
+      // Watch for our root being removed and re-inject
+      setupDOMWatcher();
+    } catch (e) {
+      console.error('Noodle init error:', e);
+    }
+  }
+
+  // Create a protected root container for Noodle UI
+  function createNoodleRoot() {
+    if (noodleRoot && document.body.contains(noodleRoot)) return;
+
+    noodleRoot = document.createElement('div');
+    noodleRoot.id = 'noodle-root';
+    noodleRoot.setAttribute('data-noodle', 'true');
+    document.body.appendChild(noodleRoot);
+  }
+
+  // Watch for our root being removed and re-inject
+  function setupDOMWatcher() {
+    // Use interval as backup since MutationObserver might miss some changes
+    setInterval(() => {
+      if (!document.getElementById('noodle-root')) {
+        noodleRoot = null;
+        sidebar = null;
+        toggle = null;
+        createNoodleRoot();
+        createSidebar();
+        createToggle();
+        loadData();
+      }
+    }, 500);
   }
 
   // Check if we were navigated here to highlight specific text
@@ -205,16 +243,24 @@
 
   // Load all data from storage
   function loadData(callback) {
-    chrome.storage.local.get(['claudeHighlights', 'claudeFolders', 'claudeColorLabels', 'noodleTogglePosition'], (result) => {
-      snippets = result.claudeHighlights || [];
-      folders = result.claudeFolders || [];
-      colorLabels = result.claudeColorLabels || { ...DEFAULT_COLOR_LABELS };
-      togglePosition = result.noodleTogglePosition || null;
-      updateBadge();
-      updateTogglePosition();
-      renderSidebar();
-      if (callback) callback();
-    });
+    try {
+      chrome.storage.local.get(['claudeHighlights', 'claudeFolders', 'claudeColorLabels', 'noodleTogglePosition'], (result) => {
+        if (chrome.runtime.lastError) {
+          console.error('Noodle storage error:', chrome.runtime.lastError);
+          return;
+        }
+        snippets = result.claudeHighlights || [];
+        folders = result.claudeFolders || [];
+        colorLabels = result.claudeColorLabels || { ...DEFAULT_COLOR_LABELS };
+        togglePosition = result.noodleTogglePosition || null;
+        updateBadge();
+        updateTogglePosition();
+        renderSidebar();
+        if (callback) callback();
+      });
+    } catch (e) {
+      console.error('Noodle loadData error:', e);
+    }
   }
 
   // Save toggle position
@@ -226,10 +272,27 @@
   function updateTogglePosition() {
     if (!toggle) return;
     if (togglePosition) {
-      toggle.style.right = 'auto';
-      toggle.style.bottom = 'auto';
-      toggle.style.left = `${togglePosition.x}px`;
-      toggle.style.top = `${togglePosition.y}px`;
+      // Clamp position to keep toggle within viewport
+      const toggleSize = 44;
+      const maxX = window.innerWidth - toggleSize - 8;
+      const maxY = window.innerHeight - toggleSize - 8;
+      const clampedX = Math.max(8, Math.min(togglePosition.x, maxX));
+      const clampedY = Math.max(8, Math.min(togglePosition.y, maxY));
+
+      // If position was out of bounds, reset to default
+      if (clampedX !== togglePosition.x || clampedY !== togglePosition.y) {
+        togglePosition = null;
+        chrome.storage.local.remove('noodleTogglePosition');
+        toggle.style.left = '';
+        toggle.style.top = '';
+        toggle.style.right = '16px';
+        toggle.style.bottom = '16px';
+      } else {
+        toggle.style.right = 'auto';
+        toggle.style.bottom = 'auto';
+        toggle.style.left = `${clampedX}px`;
+        toggle.style.top = `${clampedY}px`;
+      }
     } else {
       toggle.style.left = '';
       toggle.style.top = '';
@@ -264,7 +327,8 @@
   function createSidebar() {
     sidebar = document.createElement('div');
     sidebar.className = 'claude-highlighter-sidebar';
-    document.body.appendChild(sidebar);
+    // Append to our protected root, or body as fallback
+    (noodleRoot || document.body).appendChild(sidebar);
     renderSidebar();
   }
 

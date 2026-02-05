@@ -4,11 +4,11 @@
   "description": "Highlight and save snippets from your conversations",
   "version": "1.0.0",
   "permissions": ["storage", "scripting"],
-  "host_permissions": ["https://claude.ai/*"],
+  "host_permissions": ["https://claude.ai/*", "https://*.claude.ai/*"],
   "optional_host_permissions": ["<all_urls>"],
   "content_scripts": [
     {
-      "matches": ["https://claude.ai/*"],
+      "matches": ["https://claude.ai/*", "https://*.claude.ai/*"],
       "css": ["src/styles.css"],
       "js": ["src/content.js"]
     }
