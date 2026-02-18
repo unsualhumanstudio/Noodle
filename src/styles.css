@@ -3,6 +3,7 @@
   --highlight-blue: #D2DBF2;
   --highlight-green: #D2F2ED;
   --highlight-coral: #FED7CE;
+  --highlight-yellow: #F0E7A8;
 }
 
 /* Tooltip styles */
@@ -76,6 +77,10 @@
   background-color: var(--highlight-coral);
 }
 
+.claude-highlighter-color-btn.yellow {
+  background-color: var(--highlight-yellow);
+}
+
 /* Highlighted text marks */
 .claude-highlight {
   border-radius: 2px;
@@ -101,6 +106,10 @@
   background-color: var(--highlight-coral);
 }
 
+.claude-highlight.yellow {
+  background-color: var(--highlight-yellow);
+}
+
 /* Flash highlight animation for "go to source" */
 .claude-highlight-flash.blue {
   animation: highlightFlashBlue 2s ease-out;
@@ -112,6 +121,10 @@
 
 .claude-highlight-flash.coral {
   animation: highlightFlashCoral 2s ease-out;
+}
+
+.claude-highlight-flash.yellow {
+  animation: highlightFlashYellow 2s ease-out;
 }
 
 @keyframes highlightFlashBlue {
@@ -150,6 +163,18 @@
   }
 }
 
+@keyframes highlightFlashYellow {
+  0% {
+    box-shadow: 0 0 0 4px #E0C742;
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(224, 199, 66, 0.5);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+
 /* Sidebar */
 .claude-highlighter-sidebar {
   position: fixed;
@@ -165,6 +190,7 @@
   display: flex;
   flex-direction: column;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
 }
 
 .claude-highlighter-sidebar.open {
@@ -297,6 +323,7 @@
 .filter-dot.blue { background-color: var(--highlight-blue); }
 .filter-dot.green { background-color: var(--highlight-green); }
 .filter-dot.coral { background-color: var(--highlight-coral); }
+.filter-dot.yellow { background-color: var(--highlight-yellow); }
 
 .claude-highlighter-folder-filter {
   display: flex;
@@ -384,6 +411,7 @@
 .snippet-label.blue { background: var(--highlight-blue); }
 .snippet-label.green { background: var(--highlight-green); }
 .snippet-label.coral { background: var(--highlight-coral); }
+.snippet-label.yellow { background: var(--highlight-yellow); }
 
 .snippet-folder {
   font-size: 10px;
@@ -595,33 +623,27 @@
 }
 
 /* Toggle button */
+/* Noodle toggle pill */
 .claude-highlighter-toggle {
   position: fixed;
   right: 16px;
-  bottom: 16px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  bottom: 50%;
+  transform: translateY(50%);
+  width: 52px;
+  height: auto;
+  border-radius: 28px;
   background: #4F4D4D;
   border: none;
   cursor: grab;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
   z-index: 9998;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  transition: box-shadow 0.15s ease;
+  padding: 8px 0;
+  gap: 4px;
+  transition: box-shadow 0.15s ease, right 0.25s ease, transform 0.25s ease;
   user-select: none;
-}
-
-.claude-highlighter-toggle::before {
-  content: '';
-  width: 22px;
-  height: 22px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23F0ED95' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 3.5c5-2 7 2.5 3 4C1.5 10 2 15 5 16c5 2 9-10 14-7s.5 13.5-4 12c-5-2.5.5-11 6-2'/%3E%3C/svg%3E");
-  background-size: contain;
-  background-repeat: no-repeat;
 }
 
 .claude-highlighter-toggle:hover {
@@ -632,6 +654,45 @@
   cursor: grabbing;
 }
 
+/* Individual tool buttons inside the pill */
+.noodle-toggle-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s ease;
+  position: relative;
+}
+
+.noodle-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.noodle-toggle-btn.active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.noodle-toggle-btn svg,
+.noodle-toggle-btn img {
+  width: 22px;
+  height: 22px;
+}
+
+/* Divider between buttons */
+.noodle-toggle-divider {
+  width: 24px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+}
+
+/* Badge on noodle button */
 .claude-highlighter-toggle .badge {
   position: absolute;
   top: -2px;
@@ -640,12 +701,20 @@
   color: #333;
   font-size: 10px;
   font-weight: 600;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 9px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
+}
+
+/* Docked state — pill sits flush against the left edge of the panel */
+.claude-highlighter-toggle.docked {
+  right: 320px;
+  border-radius: 28px 0 0 28px;
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.1);
 }
 
 /* Toggle position is now controlled by JS for drag support */
@@ -916,4 +985,866 @@
 @keyframes toastOut {
   from { opacity: 1; }
   to { opacity: 0; }
+}
+
+/* ===== AI Command Bar ===== */
+
+.noodle-ai-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 10004;
+  animation: noodleAiOverlayIn 0.15s ease-out;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+@keyframes noodleAiOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.noodle-ai-container {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 600px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: noodleAiContainerIn 0.15s ease-out;
+}
+
+@keyframes noodleAiContainerIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Header */
+.noodle-ai-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e5e5;
+  flex-shrink: 0;
+}
+
+.noodle-ai-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.noodle-ai-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.noodle-ai-header-btn {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: background 0.15s ease;
+  font-family: inherit;
+}
+
+.noodle-ai-header-btn:hover {
+  background: #f0f0f0;
+}
+
+.noodle-ai-close-btn {
+  font-size: 18px;
+}
+
+/* Input area */
+.noodle-ai-input-area {
+  padding: 10px 12px 14px;
+  flex-shrink: 0;
+}
+
+/* Claude-style input box */
+.noodle-ai-input-box {
+  background: white;
+  border: 1px solid #d4d4d4;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.noodle-ai-input-box:focus-within {
+  border-color: #aaa;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.11);
+}
+
+.noodle-ai-input {
+  width: 100%;
+  padding: 12px 14px 6px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-family: inherit;
+  color: #1a1a1a;
+  resize: none;
+  outline: none;
+  line-height: 1.5;
+  min-height: 44px;
+  max-height: 160px;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.noodle-ai-input::placeholder {
+  color: #aaa;
+}
+
+.noodle-ai-input-box-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 8px 8px;
+}
+
+.noodle-ai-send-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: #1a1a1a;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, opacity 0.15s ease;
+  flex-shrink: 0;
+}
+
+.noodle-ai-send-btn:hover {
+  background: #333;
+}
+
+.noodle-ai-send-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.noodle-ai-send-btn:hover {
+  background: #444;
+}
+
+.noodle-ai-send-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Suggested chips */
+.noodle-ai-suggestions {
+  padding: 8px 16px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.noodle-ai-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 16px;
+  background: white;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.noodle-ai-chip:hover {
+  background: #f5f5f5;
+  border-color: #ccc;
+}
+
+/* Slash commands list */
+.noodle-ai-commands {
+  padding: 8px 16px 12px;
+  border-bottom: 1px solid #e5e5e5;
+  flex-shrink: 0;
+}
+
+.noodle-ai-commands-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.noodle-ai-command-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.noodle-ai-command-item:hover {
+  background: #f5f5f5;
+}
+
+.noodle-ai-command-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+}
+
+.noodle-ai-command-desc {
+  font-size: 12px;
+  color: #888;
+}
+
+/* Snippet context picker */
+.noodle-ai-context {
+  flex-shrink: 0;
+}
+
+.noodle-ai-context-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  font-size: 12px;
+  color: #666;
+  font-family: inherit;
+  transition: background 0.1s ease;
+}
+
+.noodle-ai-context-toggle:hover {
+  background: #f8f8f8;
+}
+
+.noodle-ai-context-toggle .chevron {
+  transition: transform 0.15s ease;
+  font-size: 10px;
+}
+
+.noodle-ai-context-toggle.expanded .chevron {
+  transform: rotate(180deg);
+}
+
+.noodle-ai-context-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0 16px 8px;
+}
+
+.noodle-ai-context-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.noodle-ai-context-item:last-child {
+  border-bottom: none;
+}
+
+.noodle-ai-context-checkbox {
+  margin-top: 2px;
+  accent-color: #4F4D4D;
+}
+
+.noodle-ai-context-text {
+  font-size: 12px;
+  color: #555;
+  line-height: 1.4;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.noodle-ai-context-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  color: #444;
+}
+
+.noodle-ai-context-count {
+  font-size: 11px;
+  color: #999;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.noodle-ai-select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 8px;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+}
+
+/* Chat messages */
+.noodle-ai-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 200px;
+}
+
+.noodle-ai-message {
+  max-width: 90%;
+  word-wrap: break-word;
+}
+
+.noodle-ai-message.user {
+  align-self: flex-end;
+  background: #333;
+  color: white;
+  border-radius: 12px 12px 4px 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.noodle-ai-message.assistant {
+  align-self: flex-start;
+  background: #f5f5f5;
+  color: #333;
+  border-radius: 12px 12px 12px 4px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.noodle-ai-message.assistant p {
+  margin: 0 0 8px;
+}
+
+.noodle-ai-message.assistant p:last-child {
+  margin-bottom: 0;
+}
+
+.noodle-ai-message.assistant strong {
+  font-weight: 600;
+}
+
+.noodle-ai-message.assistant code {
+  background: #e8e8e8;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.noodle-ai-message.assistant ul,
+.noodle-ai-message.assistant ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.noodle-ai-message.assistant li {
+  margin-bottom: 2px;
+}
+
+/* Citation superscripts in AI responses */
+.noodle-ai-cite {
+  display: inline;
+  font-size: 10px;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  padding: 0 1px;
+  margin: 0 1px;
+  vertical-align: super;
+  line-height: 0;
+  transition: color 0.1s ease;
+  text-decoration: none;
+}
+
+.noodle-ai-cite:hover {
+  color: #333;
+  text-decoration: underline;
+}
+
+/* Sources footer in AI responses */
+.noodle-ai-sources {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.noodle-ai-sources-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.noodle-ai-source-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s ease;
+}
+
+.noodle-ai-source-item:hover {
+  background: #f0f0f0;
+}
+
+.noodle-ai-source-num {
+  font-size: 10px;
+  font-weight: 600;
+  color: #888;
+  min-width: 14px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.noodle-ai-source-chip {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #444;
+  flex-shrink: 0;
+}
+
+.noodle-ai-source-text {
+  font-size: 11px;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* Typing indicator */
+.noodle-ai-typing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  align-self: flex-start;
+}
+
+.noodle-ai-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ccc;
+  animation: noodleTyping 1.2s ease-in-out infinite;
+}
+
+.noodle-ai-typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.noodle-ai-typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes noodleTyping {
+  0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
+  30% { opacity: 1; transform: scale(1); }
+}
+
+/* Chat history sidebar */
+.noodle-ai-history {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 220px;
+  background: #fafafa;
+  border-right: 1px solid #e5e5e5;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform 0.22s ease;
+  z-index: 2;
+  border-radius: 12px 0 0 12px;
+}
+
+.noodle-ai-history.open {
+  transform: translateX(0);
+}
+
+.noodle-ai-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 12px 12px;
+  border-bottom: 1px solid #e5e5e5;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  flex-shrink: 0;
+}
+
+.noodle-ai-history-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #999;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+  font-family: inherit;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.noodle-ai-history-close-btn:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.noodle-ai-history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.noodle-ai-history-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+  margin-bottom: 2px;
+  transition: background 0.1s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.noodle-ai-history-item:hover {
+  background: #f5f5f5;
+}
+
+.noodle-ai-history-item.active {
+  background: #efefef;
+  font-weight: 500;
+}
+
+.noodle-ai-history-item-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 20px;
+}
+
+.noodle-ai-history-date {
+  font-size: 10px;
+  color: #bbb;
+}
+
+.noodle-ai-history-delete {
+  display: none;
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #bbb;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  font-family: inherit;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.noodle-ai-history-delete:hover {
+  color: #e74c3c;
+  background: #fef0f0;
+}
+
+.noodle-ai-history-item:hover .noodle-ai-history-delete {
+  display: block;
+}
+
+/* Dimmed clock icon when no history */
+.noodle-ai-header-btn-dim {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* API key prompt */
+.noodle-ai-apikey-prompt {
+  padding: 20px;
+  text-align: center;
+}
+
+.noodle-ai-apikey-prompt p {
+  font-size: 13px;
+  color: #555;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.noodle-ai-apikey-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+.noodle-ai-apikey-input:focus {
+  outline: none;
+  border-color: #999;
+}
+
+.noodle-ai-apikey-save {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+  background: #333;
+  color: white;
+  font-family: inherit;
+}
+
+.noodle-ai-apikey-save:hover {
+  background: #444;
+}
+
+/* Chat panel inside sidebar */
+.noodle-chat-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.noodle-chat-panel .noodle-ai-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.noodle-chat-panel .noodle-ai-input-area {
+  border-top: 1px solid #ebebeb;
+}
+
+/* Context picker sits inside the input area, above the box */
+.noodle-ai-input-area .noodle-ai-context {
+  border: none;
+  margin-bottom: 6px;
+}
+
+.noodle-ai-input-area .noodle-ai-context-toggle {
+  padding: 5px 4px;
+  font-size: 11px;
+  color: #999;
+  border-radius: 6px;
+}
+
+.noodle-ai-input-area .noodle-ai-context-toggle:hover {
+  background: #f0f0f0;
+  color: #555;
+}
+
+.noodle-ai-input-area .noodle-ai-context-list {
+  max-height: 140px;
+  padding: 0 4px 4px;
+}
+
+/* Chat panel header — reuses sidebar header styles */
+.noodle-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e5e5;
+  background: white;
+  flex-shrink: 0;
+}
+
+.noodle-chat-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.noodle-chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  gap: 12px;
+}
+
+.noodle-chat-empty-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.noodle-chat-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  text-align: center;
+}
+
+.noodle-chat-empty-hint {
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.noodle-chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+/* Chat history in sidebar */
+.noodle-sidebar-chat-history {
+  padding: 8px 14px 4px;
+  flex-shrink: 0;
+}
+
+.noodle-sidebar-chat-history-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #999;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.noodle-sidebar-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.noodle-sidebar-history-item {
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  transition: background 0.1s ease;
+  overflow: hidden;
+}
+
+.noodle-sidebar-history-item:hover {
+  background: #f0f0f0;
+}
+
+.noodle-sidebar-history-item.active {
+  background: #e8e8e8;
+  font-weight: 500;
+}
+
+.noodle-sidebar-history-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.noodle-sidebar-history-delete {
+  background: none;
+  border: none;
+  color: #bbb;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  display: none;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.noodle-sidebar-history-item:hover .noodle-sidebar-history-delete {
+  display: block;
 }

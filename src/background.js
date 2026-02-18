@@ -44,7 +44,109 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (message.type === 'noodleAiRequest') {
+    handleAiRequest(message, sender);
+    return true;
+  }
 });
+
+// Handle AI API requests with streaming
+async function handleAiRequest(message, sender) {
+  const { requestId, systemPrompt, messages } = message;
+  const tabId = sender.tab?.id;
+  if (!tabId) return;
+
+  const result = await chrome.storage.local.get('noodleApiKey');
+  const apiKey = result.noodleApiKey;
+
+  if (!apiKey) {
+    chrome.tabs.sendMessage(tabId, {
+      type: 'noodleAiStreamError',
+      requestId,
+      error: 'No API key configured. Add your Claude API key in Settings.'
+    });
+    return;
+  }
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: messages,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      chrome.tabs.sendMessage(tabId, {
+        type: 'noodleAiStreamError',
+        requestId,
+        error: `API error (${response.status}): ${errorText}`
+      });
+      return;
+    }
+
+    chrome.tabs.sendMessage(tabId, {
+      type: 'noodleAiStreamStart',
+      requestId
+    });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+              chrome.tabs.sendMessage(tabId, {
+                type: 'noodleAiStreamDelta',
+                requestId,
+                text: parsed.delta.text
+              });
+            }
+          } catch (e) {
+            // Skip unparseable lines
+          }
+        }
+      }
+    }
+
+    chrome.tabs.sendMessage(tabId, {
+      type: 'noodleAiStreamEnd',
+      requestId
+    });
+
+  } catch (err) {
+    chrome.tabs.sendMessage(tabId, {
+      type: 'noodleAiStreamError',
+      requestId,
+      error: err.message
+    });
+  }
+}
 
 // Inject content script into a tab
 function injectIntoTab(tabId) {

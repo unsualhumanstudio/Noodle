@@ -6,13 +6,15 @@
   const DEFAULT_COLOR_LABELS = {
     blue: 'Ideas',
     green: 'Copy',
-    coral: 'Questions'
+    coral: 'Questions',
+    yellow: 'Notes'
   };
 
   const COLORS = {
     blue: '#D2DBF2',
     green: '#D2F2ED',
-    coral: '#FED7CE'
+    coral: '#FED7CE',
+    yellow: '#F0E7A8'
   };
 
   let snippets = [];
@@ -29,6 +31,17 @@
   // Container for our UI (protected from React)
   let noodleRoot = null;
 
+  // AI Command Bar state
+  let aiOverlay = null;
+  let aiCurrentChatId = null;
+  let aiChatHistory = [];
+  let aiSelectedFolderIds = ['all']; // ['all'] or array of folder IDs / 'unfiled'
+  let aiIsStreaming = false;
+  let aiCurrentRequestId = null;
+  let aiStreamBuffer = '';
+  let aiContextExpanded = false;
+  let aiHistoryOpen = false;
+
   // Initialize
   function init() {
     try {
@@ -37,6 +50,8 @@
       createSidebar();
       createToggle();
       setupSelectionListener();
+      setupAiShortcut();
+      setupAiMessageListener();
       loadData(() => {
         // After data is loaded, check if we need to highlight something
         checkForHighlightRequest();
@@ -268,36 +283,29 @@
     chrome.storage.local.set({ noodleTogglePosition: togglePosition });
   }
 
-  // Update toggle button position
+  // Update toggle button position (Y-axis only; X is fixed to right edge)
   function updateTogglePosition() {
     if (!toggle) return;
-    if (togglePosition) {
-      // Clamp position to keep toggle within viewport
-      const toggleSize = 44;
-      const maxX = window.innerWidth - toggleSize - 8;
-      const maxY = window.innerHeight - toggleSize - 8;
-      const clampedX = Math.max(8, Math.min(togglePosition.x, maxX));
+    if (togglePosition && togglePosition.y != null) {
+      const rect = toggle.getBoundingClientRect();
+      const maxY = window.innerHeight - rect.height - 8;
       const clampedY = Math.max(8, Math.min(togglePosition.y, maxY));
 
-      // If position was out of bounds, reset to default
-      if (clampedX !== togglePosition.x || clampedY !== togglePosition.y) {
+      if (clampedY !== togglePosition.y) {
         togglePosition = null;
         chrome.storage.local.remove('noodleTogglePosition');
-        toggle.style.left = '';
         toggle.style.top = '';
-        toggle.style.right = '16px';
-        toggle.style.bottom = '16px';
+        toggle.style.bottom = '50%';
+        toggle.style.transform = 'translateY(50%)';
       } else {
-        toggle.style.right = 'auto';
         toggle.style.bottom = 'auto';
-        toggle.style.left = `${clampedX}px`;
+        toggle.style.transform = 'none';
         toggle.style.top = `${clampedY}px`;
       }
     } else {
-      toggle.style.left = '';
       toggle.style.top = '';
-      toggle.style.right = '16px';
-      toggle.style.bottom = '16px';
+      toggle.style.bottom = '50%';
+      toggle.style.transform = 'translateY(50%)';
     }
   }
 
@@ -353,6 +361,9 @@
           <button class="filter-btn ${activeFilter === 'coral' ? 'active' : ''}" data-filter="coral">
             <span class="filter-dot coral"></span>${colorLabels.coral}
           </button>
+          <button class="filter-btn ${activeFilter === 'yellow' ? 'active' : ''}" data-filter="yellow">
+            <span class="filter-dot yellow"></span>${colorLabels.yellow}
+          </button>
         </div>
         <div class="claude-highlighter-folder-filter">
           <select class="folder-select">
@@ -372,6 +383,8 @@
     // Event listeners
     sidebar.querySelector('.claude-highlighter-close-btn').addEventListener('click', () => {
       sidebar.classList.remove('open');
+      toggle.classList.remove('docked');
+      toggle.querySelectorAll('.noodle-toggle-btn').forEach(b => b.classList.remove('active'));
     });
 
     sidebar.querySelectorAll('.filter-btn').forEach(btn => {
@@ -402,27 +415,51 @@
     renderSnippets();
   }
 
-  // Create the toggle button
+  // Track which panel mode is active: 'snippets' | 'chat'
+  let sidebarMode = 'snippets';
+
+  // Create the toggle pill
   function createToggle() {
-    toggle = document.createElement('button');
+    toggle = document.createElement('div');
     toggle.className = 'claude-highlighter-toggle';
-    toggle.innerHTML = '<span class="badge" style="display: none;">0</span>';
+    toggle.innerHTML = `
+      <button class="noodle-toggle-btn" id="noodle-btn-snippets" title="Noodles">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F0ED95" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 3.5c5-2 7 2.5 3 4C1.5 10 2 15 5 16c5 2 9-10 14-7s.5 13.5-4 12c-5-2.5.5-11 6-2"/>
+        </svg>
+        <span class="badge" style="display:none;">0</span>
+      </button>
+      <div class="noodle-toggle-divider"></div>
+      <button class="noodle-toggle-btn" id="noodle-btn-think" title="Think">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 64 64" style="width:24px;height:24px;">
+          <path fill="#ffdd67" d="M4 30c0 15.5 12.5 28 28 28s28-12.5 28-28S47.5 2 32 2S4 14.5 4 30"/>
+          <path fill="#917524" d="M14.2 12c3.4-2 7.5-2.3 11.3-1c.5.2 1.3-1.7.7-1.9c-4.3-1.6-9-1.2-13 1.1c-.6.3.5 2.1 1 1.8m24 3c3.4-2 7.5-2.3 11.3-1c.5.2 1.3-1.7.7-1.9c-4.3-1.6-9-1.2-13 1.1c-.6.3.5 2 1 1.8"/>
+          <path fill="#664e27" d="M24.1 34.7c5.1-1.3 10.7-.4 15 2.6c1.1.7-.9 3.5-2 2.7c-2.9-1.9-7.4-3.3-12.1-2.1c-1.2.3-2.2-2.8-.9-3.2"/>
+          <path fill="#fff" d="M42.8 29.1c-4.1 0-7.5-3.4-7.5-7.5c0-1.7.6-3.3 1.5-4.5c1.7-.5 3.6-.7 5.6-.7c2.4 0 4.7.4 6.7 1.1c.8 1.2 1.3 2.6 1.3 4.2c-.1 4.1-3.4 7.4-7.6 7.4"/>
+          <path fill="#664e27" d="M43.8 16.4c.4.6.7 1.3.7 2.1c0 2.1-1.7 3.8-3.8 3.8S37 20.6 37 18.6c0-.6.1-1.1.4-1.6c1.5-.4 3.2-.6 5-.6z"/>
+          <path fill="#fff" d="M21.2 29.1c-4.1 0-7.5-3.4-7.5-7.5c0-1.7.6-3.3 1.5-4.5c1.7-.5 3.6-.7 5.6-.7c2.4 0 4.7.4 6.7 1.1c.8 1.2 1.3 2.6 1.3 4.2c-.1 4.1-3.5 7.4-7.6 7.4"/>
+          <path fill="#664e27" d="M22.2 16.4c.4.6.7 1.3.7 2.1c0 2.1-1.7 3.8-3.8 3.8s-3.8-1.7-3.8-3.8c0-.6.1-1.1.4-1.6c1.5-.4 3.2-.6 5-.6c.6.1 1 .1 1.5.1"/>
+          <path fill="#fff" d="M32.6 44c-4.2 1-14.9 2.3-16.8.3c-.9-.9-.7-2.2-.4-4.5s-1.9-4.7-3.5-4.9c-1.9-.2-3 1.2-2.3 3.2C11 42.6 8.2 44 8 47.3c-.1 1.9-.7 5.1 2.2 9.2c3.3 4.6 9 4.7 11 4.6c2.3-.1 3.3-.2 3.8-1.2c.6-1.2.3-1.5.6-1.9c.5-.9.8-.8 1.1-1.9s-.5-1.8-.3-2.3c.4-1.2 1.4-1 .4-3.8c3.4-.5 5.6-1 7.6-2.2c3.7-2 .5-4.3-1.8-3.8"/>
+        </svg>
+      </button>
+    `;
     document.body.appendChild(toggle);
 
     // Drag state
     let isDragging = false;
     let hasMoved = false;
     let dragStartX, dragStartY;
-    let toggleStartX, toggleStartY;
+    let toggleStartY;
 
     toggle.addEventListener('mousedown', (e) => {
+      // Don't start drag on button clicks
+      if (e.target.closest('.noodle-toggle-btn')) return;
       isDragging = true;
       hasMoved = false;
       dragStartX = e.clientX;
       dragStartY = e.clientY;
 
       const rect = toggle.getBoundingClientRect();
-      toggleStartX = rect.left;
       toggleStartY = rect.top;
 
       toggle.style.cursor = 'grabbing';
@@ -432,25 +469,17 @@
     document.addEventListener('mousemove', (e) => {
       if (!isDragging) return;
 
-      const deltaX = e.clientX - dragStartX;
       const deltaY = e.clientY - dragStartY;
-
-      // Only count as moved if dragged more than 5px
-      if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+      if (Math.abs(e.clientX - dragStartX) > 5 || Math.abs(deltaY) > 5) {
         hasMoved = true;
       }
 
-      let newX = toggleStartX + deltaX;
       let newY = toggleStartY + deltaY;
+      const rect = toggle.getBoundingClientRect();
+      newY = Math.max(8, Math.min(newY, window.innerHeight - rect.height - 8));
 
-      // Keep within viewport
-      const toggleSize = 44;
-      newX = Math.max(0, Math.min(newX, window.innerWidth - toggleSize));
-      newY = Math.max(0, Math.min(newY, window.innerHeight - toggleSize));
-
-      toggle.style.right = 'auto';
       toggle.style.bottom = 'auto';
-      toggle.style.left = `${newX}px`;
+      toggle.style.transform = 'none';
       toggle.style.top = `${newY}px`;
     });
 
@@ -460,30 +489,61 @@
       toggle.style.cursor = '';
 
       if (hasMoved) {
-        // Save new position
         const rect = toggle.getBoundingClientRect();
-        togglePosition = { x: rect.left, y: rect.top };
+        togglePosition = { y: rect.top };
         saveTogglePosition();
       }
     });
 
-    toggle.addEventListener('click', (e) => {
-      // Only toggle sidebar if we didn't drag
-      if (!hasMoved) {
-        sidebar.classList.toggle('open');
-      }
+    // Noodle button — open snippets panel
+    toggle.querySelector('#noodle-btn-snippets').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (hasMoved) return;
+      openPanel('snippets');
     });
 
-    // Tooltip for toggle
-    toggle.addEventListener('mouseenter', () => {
-      if (!isDragging) showTooltip(toggle, 'Click to open Noodles (drag to move)');
+    // Think button — open chat panel
+    toggle.querySelector('#noodle-btn-think').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (hasMoved) return;
+      openPanel('chat');
     });
-    toggle.addEventListener('mouseleave', hideTooltip);
+
+    setupTooltip(toggle.querySelector('#noodle-btn-snippets'), 'Noodles');
+    setupTooltip(toggle.querySelector('#noodle-btn-think'), 'Think');
   }
 
-  // Update badge count
+  function openPanel(mode) {
+    const isOpen = sidebar.classList.contains('open');
+    const isSameMode = sidebarMode === mode;
+
+    if (isOpen && isSameMode) {
+      // Toggle closed
+      sidebar.classList.remove('open');
+      toggle.classList.remove('docked');
+      toggle.querySelector(`#noodle-btn-${mode === 'snippets' ? 'snippets' : 'think'}`)?.classList.remove('active');
+      return;
+    }
+
+    sidebarMode = mode;
+    aiHistoryOpen = false; // always start with history closed when opening panel
+    sidebar.classList.add('open');
+    toggle.classList.add('docked');
+
+    // Update active states
+    toggle.querySelector('#noodle-btn-snippets').classList.toggle('active', mode === 'snippets');
+    toggle.querySelector('#noodle-btn-think').classList.toggle('active', mode === 'chat');
+
+    if (mode === 'snippets') {
+      renderSidebar();
+    } else {
+      renderChatPanel();
+    }
+  }
+
+  // Update badge count (on the noodle icon button)
   function updateBadge() {
-    const badge = toggle?.querySelector('.badge');
+    const badge = toggle?.querySelector('#noodle-btn-snippets .badge');
     if (badge) {
       if (snippets.length > 0) {
         badge.textContent = snippets.length;
@@ -819,20 +879,37 @@
 
   // Show settings dialog
   async function showSettingsDialog() {
-    // Check current all-sites permission status
+    // Check current all-sites permission status and API key
     let hasAllSites = false;
+    let hasApiKey = false;
     try {
       const response = await chrome.runtime.sendMessage({ type: 'checkAllSitesPermission' });
       hasAllSites = response?.hasPermission || false;
     } catch (e) {
       // Extension context may not be available
     }
+    try {
+      const result = await new Promise(resolve => chrome.storage.local.get('noodleApiKey', resolve));
+      hasApiKey = !!result.noodleApiKey;
+    } catch (e) {}
 
     const dialog = document.createElement('div');
     dialog.className = 'claude-highlighter-dialog-overlay';
     dialog.innerHTML = `
       <div class="claude-highlighter-dialog settings-dialog">
         <h3>Settings</h3>
+        <div class="settings-section">
+          <h4>AI (Claude API)</h4>
+          <div class="api-key-row" style="display:flex;gap:6px;align-items:center;">
+            <input type="password" class="dialog-input api-key-input" style="flex:1;font-size:12px;"
+                   placeholder="sk-ant-..." value="${hasApiKey ? '••••••••' : ''}" />
+            <button class="dialog-btn api-key-save-btn" style="padding:8px 12px;font-size:12px;">
+              ${hasApiKey ? 'Update' : 'Save'}
+            </button>
+            ${hasApiKey ? '<button class="dialog-btn api-key-clear-btn" style="padding:8px 10px;font-size:12px;color:#e74c3c;">Clear</button>' : ''}
+          </div>
+          <p class="settings-hint">Your API key is stored locally and used for AI features.</p>
+        </div>
         <div class="settings-section">
           <h4>Availability</h4>
           <label class="toggle-row">
@@ -855,6 +932,10 @@
           <div class="color-label-row">
             <span class="filter-dot coral"></span>
             <input type="text" class="dialog-input" data-color="coral" value="${escapeHtml(colorLabels.coral)}">
+          </div>
+          <div class="color-label-row">
+            <span class="filter-dot yellow"></span>
+            <input type="text" class="dialog-input" data-color="yellow" value="${escapeHtml(colorLabels.yellow)}">
           </div>
         </div>
         <div class="settings-section">
@@ -895,6 +976,28 @@
         e.target.checked = !e.target.checked;
         showToast('Could not change permission');
       }
+    });
+
+    // API key save handler
+    dialog.querySelector('.api-key-save-btn')?.addEventListener('click', () => {
+      const keyInput = dialog.querySelector('.api-key-input');
+      const key = keyInput?.value.trim();
+      if (key && key !== '••••••••') {
+        chrome.storage.local.set({ noodleApiKey: key }, () => {
+          showToast('API key saved');
+          keyInput.value = '••••••••';
+        });
+      }
+    });
+
+    // API key clear handler
+    dialog.querySelector('.api-key-clear-btn')?.addEventListener('click', () => {
+      chrome.storage.local.remove('noodleApiKey', () => {
+        showToast('API key removed');
+        const keyInput = dialog.querySelector('.api-key-input');
+        if (keyInput) keyInput.value = '';
+        dialog.querySelector('.api-key-clear-btn')?.remove();
+      });
     });
 
     // Delete folder handlers
@@ -943,7 +1046,8 @@
         e.target.closest('.claude-highlighter-sidebar') ||
         e.target.closest('.claude-highlighter-toggle') ||
         e.target.closest('.claude-highlighter-dialog-overlay') ||
-        e.target.closest('.folder-picker')) {
+        e.target.closest('.folder-picker') ||
+        e.target.closest('.noodle-ai-overlay')) {
       return;
     }
 
@@ -965,7 +1069,7 @@
     const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
 
     // Skip if selection is in our own UI or in input/textarea elements
-    if (element.closest('.claude-highlighter-toolbar, .claude-highlighter-sidebar, .claude-highlighter-toggle, .claude-highlighter-dialog-overlay, .folder-picker')) {
+    if (element.closest('.claude-highlighter-toolbar, .claude-highlighter-sidebar, .claude-highlighter-toggle, .claude-highlighter-dialog-overlay, .folder-picker, .noodle-ai-overlay')) {
       return;
     }
     if (element.closest('input, textarea, [contenteditable="true"]')) {
@@ -989,6 +1093,7 @@
       <button class="claude-highlighter-color-btn blue" data-color="blue" title="${colorLabels.blue}"></button>
       <button class="claude-highlighter-color-btn green" data-color="green" title="${colorLabels.green}"></button>
       <button class="claude-highlighter-color-btn coral" data-color="coral" title="${colorLabels.coral}"></button>
+      <button class="claude-highlighter-color-btn yellow" data-color="yellow" title="${colorLabels.yellow}"></button>
     `;
 
     document.body.appendChild(toolbar);
@@ -1408,6 +1513,899 @@
     setTimeout(() => {
       toast.remove();
     }, 2000);
+  }
+
+  // ===== AI Command Bar =====
+
+  const AI_COMMANDS = [
+    { name: '/summarize', desc: 'Summarize selected snippets' },
+    { name: '/analyze', desc: 'Deep dive into a snippet' },
+    { name: '/compare', desc: 'Compare selected snippets' },
+    { name: '/patterns', desc: 'Find recurring themes' },
+    { name: '/tags', desc: 'Suggest tags for snippets' },
+    { name: '/questions', desc: 'Generate research questions' },
+    { name: '/export', desc: 'Export analysis as markdown' },
+    { name: '/outline', desc: 'Create outline from snippets' },
+    { name: '/gaps', desc: 'Identify missing research areas' },
+    { name: '/connect', desc: 'Find non-obvious connections' },
+    { name: '/actionable', desc: 'Turn insights into action items' },
+    { name: '/cite', desc: 'Format snippets as citations' }
+  ];
+
+  function setupAiShortcut() {
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'N') {
+        e.preventDefault();
+        e.stopPropagation();
+        openPanel('chat');
+      }
+    });
+  }
+
+  function setupAiMessageListener() {
+    chrome.runtime.onMessage.addListener((message) => {
+      switch (message.type) {
+        case 'noodleAiStreamStart':
+          handleStreamStart(message.requestId);
+          break;
+        case 'noodleAiStreamDelta':
+          handleStreamDelta(message.requestId, message.text);
+          break;
+        case 'noodleAiStreamEnd':
+          handleStreamEnd(message.requestId);
+          break;
+        case 'noodleAiStreamError':
+          handleStreamError(message.requestId, message.error);
+          break;
+      }
+    });
+  }
+
+  function renderChatPanel() {
+    if (!sidebar) return;
+
+    chrome.storage.local.get(['noodleChatHistory', 'noodleApiKey'], (result) => {
+      aiChatHistory = result.noodleChatHistory || [];
+      const hasApiKey = !!result.noodleApiKey;
+      aiSelectedFolderIds = ['all'];
+      aiContextExpanded = false;
+      aiHistoryOpen = false;
+
+      const currentChat = aiCurrentChatId
+        ? aiChatHistory.find(c => c.id === aiCurrentChatId)
+        : null;
+      const isChat = currentChat && currentChat.messages.length > 0;
+
+      sidebar.innerHTML = buildChatPanelHTML(hasApiKey, currentChat, isChat);
+
+      attachAiEventListeners(hasApiKey, isChat);
+
+      const input = sidebar.querySelector('.noodle-ai-input');
+      if (input) setTimeout(() => input.focus(), 50);
+
+      if (isChat) {
+        const messagesEl = sidebar.querySelector('.noodle-ai-messages');
+        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+    });
+  }
+
+  function buildChatPanelHTML(hasApiKey, currentChat, isChat) {
+    const contextPickerHTML = buildContextPickerHTML();
+
+    const clockIconSVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+
+    const headerHTML = `
+      <div class="noodle-chat-header">
+        <div class="noodle-chat-header-title">
+          <span>✨ ${isChat ? escapeHtml(currentChat.title || 'Think') : 'Think'}</span>
+        </div>
+        <div class="noodle-ai-header-actions">
+          ${isChat ? '<button class="noodle-ai-new-chat-btn noodle-ai-header-btn">+ New</button>' : ''}
+          <button class="noodle-ai-history-toggle-btn noodle-ai-header-btn ${aiChatHistory.length === 0 ? 'noodle-ai-header-btn-dim' : ''}" title="Chat history" ${aiChatHistory.length === 0 ? 'disabled' : ''}>${clockIconSVG}</button>
+          <button class="noodle-chat-close-btn noodle-ai-header-btn">&times;</button>
+        </div>
+      </div>
+    `;
+
+    if (!hasApiKey) {
+      return `
+        ${headerHTML}
+        <div class="noodle-ai-apikey-prompt">
+          <p>Enter your Claude API key to use AI features.</p>
+          <input type="password" class="noodle-ai-apikey-input" placeholder="sk-ant-..." />
+          <button class="noodle-ai-apikey-save">Save Key</button>
+          <p style="font-size:11px;color:#999;margin-top:8px;">
+            Your key is stored locally and never shared.
+          </p>
+        </div>
+      `;
+    }
+
+    const inputBoxHTML = (placeholder) => `
+      <div class="noodle-ai-input-area">
+        ${contextPickerHTML}
+        <div class="noodle-ai-input-box">
+          <textarea class="noodle-ai-input" placeholder="${placeholder}" rows="1"></textarea>
+          <div class="noodle-ai-input-box-footer">
+            <button class="noodle-ai-send-btn" title="Send">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (isChat) {
+      const messagesHTML = currentChat.messages.map(m => buildMessageHTML(m)).join('');
+      return `
+        ${buildSidebarHistoryHTML()}
+        ${headerHTML}
+        <div class="noodle-chat-panel">
+          <div class="noodle-ai-messages">${messagesHTML}</div>
+          ${inputBoxHTML('Ask a follow-up...')}
+        </div>
+      `;
+    }
+
+    // Empty state with suggestions
+    return `
+      ${buildSidebarHistoryHTML()}
+      ${headerHTML}
+      <div class="noodle-chat-panel">
+        <div class="noodle-chat-empty">
+          <div class="noodle-chat-empty-title">What would you like to think through?</div>
+          <div class="noodle-chat-empty-hint">Ask anything about your saved snippets, or pick a suggestion below.</div>
+          <div class="noodle-chat-suggestions">
+            ${['Summarize my snippets', 'Find common themes', 'What are the key insights?', 'Generate action items', 'Find connections between ideas'].map(s =>
+              `<button class="noodle-ai-chip" data-suggestion="${escapeHtml(s)}">${escapeHtml(s)}</button>`
+            ).join('')}
+          </div>
+        </div>
+        ${inputBoxHTML('Ask about your snippets...')}
+      </div>
+    `;
+  }
+
+  function buildSidebarHistoryHTML() {
+    if (aiChatHistory.length === 0) return '';
+    return `
+      <div class="noodle-ai-history ${aiHistoryOpen ? 'open' : ''}">
+        <div class="noodle-ai-history-header">
+          <span>History</span>
+          <button class="noodle-ai-history-close-btn" title="Close history">&times;</button>
+        </div>
+        <div class="noodle-ai-history-list">
+          ${aiChatHistory.map(chat => `
+            <div class="noodle-ai-history-item ${chat.id === aiCurrentChatId ? 'active' : ''}"
+                 data-chat-id="${chat.id}">
+              <span class="noodle-ai-history-item-title">${escapeHtml(chat.title || 'Untitled')}</span>
+              <span class="noodle-ai-history-date">${formatDate(chat.updatedAt)}</span>
+              <button class="noodle-ai-history-delete" data-chat-id="${chat.id}" title="Delete">&times;</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // Reset AI state when leaving chat panel
+  function closeAiCommandBar() {
+    aiHistoryOpen = false;
+    aiContextExpanded = false;
+  }
+
+  // Resolve selected folders to actual snippet IDs
+  function getSelectedSnippetIds() {
+    if (aiSelectedFolderIds.includes('all')) {
+      return snippets.map(s => s.id);
+    }
+    return snippets.filter(s => {
+      if (aiSelectedFolderIds.includes('unfiled') && !s.folderId) return true;
+      if (s.folderId && aiSelectedFolderIds.includes(s.folderId)) return true;
+      return false;
+    }).map(s => s.id);
+  }
+
+  function buildContextPickerHTML() {
+    if (snippets.length === 0) return '';
+
+    const resolvedCount = getSelectedSnippetIds().length;
+    const totalCount = snippets.length;
+    const isAll = aiSelectedFolderIds.includes('all');
+
+    // Build folder options: "All", "Unfiled", then each folder
+    const unfiledCount = snippets.filter(s => !s.folderId).length;
+    const folderCounts = folders.map(f => ({
+      ...f,
+      count: snippets.filter(s => s.folderId === f.id).length
+    }));
+
+    return `
+      <div class="noodle-ai-context">
+        <button class="noodle-ai-context-toggle ${aiContextExpanded ? 'expanded' : ''}">
+          <span>Snippet context (${resolvedCount}/${totalCount} snippets)</span>
+          <span class="chevron">&#9660;</span>
+        </button>
+        ${aiContextExpanded ? `
+          <div class="noodle-ai-context-list">
+            <label class="noodle-ai-context-item">
+              <input type="checkbox" class="noodle-ai-folder-checkbox"
+                     data-folder-id="all" ${isAll ? 'checked' : ''} />
+              <span class="noodle-ai-context-text" style="font-weight:500;">All folders</span>
+              <span class="noodle-ai-context-count">${totalCount}</span>
+            </label>
+            ${unfiledCount > 0 ? `
+              <label class="noodle-ai-context-item">
+                <input type="checkbox" class="noodle-ai-folder-checkbox"
+                       data-folder-id="unfiled" ${isAll || aiSelectedFolderIds.includes('unfiled') ? 'checked' : ''} ${isAll ? 'disabled' : ''} />
+                <span class="noodle-ai-context-text">Unfiled</span>
+                <span class="noodle-ai-context-count">${unfiledCount}</span>
+              </label>
+            ` : ''}
+            ${folderCounts.map(f => `
+              <label class="noodle-ai-context-item">
+                <input type="checkbox" class="noodle-ai-folder-checkbox"
+                       data-folder-id="${f.id}" ${isAll || aiSelectedFolderIds.includes(f.id) ? 'checked' : ''} ${isAll ? 'disabled' : ''} />
+                <span class="noodle-ai-context-text">${escapeHtml(f.name)}</span>
+                <span class="noodle-ai-context-count">${f.count}</span>
+              </label>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  function buildSuggestionsHTML() {
+    if (snippets.length === 0) {
+      return `
+        <div class="noodle-ai-suggestions">
+          <span style="font-size:12px;color:#888;">Save some snippets first to use AI features.</span>
+        </div>
+      `;
+    }
+
+    const suggestions = [
+      'Summarize my snippets',
+      'Find common themes',
+      'What are the key insights?',
+      'Generate action items',
+      'Find connections between ideas'
+    ];
+
+    return `
+      <div class="noodle-ai-suggestions">
+        ${suggestions.map(s => `
+          <button class="noodle-ai-chip" data-suggestion="${escapeHtml(s)}">${escapeHtml(s)}</button>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function buildCommandsListHTML() {
+    return `
+      <div class="noodle-ai-commands">
+        <div class="noodle-ai-commands-title">Commands</div>
+        ${AI_COMMANDS.slice(0, 4).map(cmd => `
+          <div class="noodle-ai-command-item" data-command="${cmd.name}">
+            <span class="noodle-ai-command-name">${cmd.name}</span>
+            <span class="noodle-ai-command-desc">${cmd.desc}</span>
+          </div>
+        `).join('')}
+        <button class="noodle-ai-show-all-commands noodle-ai-chip" style="margin-top:4px;">
+          Show all commands
+        </button>
+      </div>
+    `;
+  }
+
+  function buildHistorySidebarHTML() {
+    return `
+      <div class="noodle-ai-history ${aiHistoryOpen ? 'open' : ''}">
+        <div class="noodle-ai-history-header">Chat History</div>
+        <div class="noodle-ai-history-list">
+          ${aiChatHistory.length === 0
+            ? '<div style="padding:12px;font-size:12px;color:#888;text-align:center;">No chats yet</div>'
+            : aiChatHistory.map(chat => `
+              <div class="noodle-ai-history-item ${chat.id === aiCurrentChatId ? 'active' : ''}"
+                   data-chat-id="${chat.id}">
+                <button class="noodle-ai-history-delete" data-chat-id="${chat.id}">&times;</button>
+                ${escapeHtml(chat.title || 'Untitled')}
+                <span class="noodle-ai-history-date">${formatDate(chat.updatedAt)}</span>
+              </div>
+            `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  function buildMessageHTML(message) {
+    if (message.role === 'user') {
+      return `
+        <div class="noodle-ai-message user">
+          ${escapeHtml(message.content)}
+        </div>
+      `;
+    }
+
+    const rendered = renderAiContent(message.content);
+    return `
+      <div class="noodle-ai-message assistant">
+        ${rendered}
+      </div>
+    `;
+  }
+
+  function renderAiContent(text) {
+    let html = escapeHtml(text);
+
+    // Track which citation numbers are used in this response
+    const usedCitations = new Set();
+
+    // Convert numbered citations [1], [2] etc. to superscript numbers
+    html = html.replace(/\[(\d+)\]/g, (match, num) => {
+      const citNum = parseInt(num);
+      const citation = aiCitationMap.find(c => c.index === citNum);
+      if (!citation) return match;
+      const snippet = snippets.find(s => s.id === citation.id);
+      if (!snippet) return match;
+      usedCitations.add(citNum);
+      return `<sup class="noodle-ai-cite" data-snippet-id="${snippet.id}" data-cite-num="${citNum}" title="${escapeHtml(snippet.text.substring(0, 100))}">${citNum}</sup>`;
+    });
+
+    // Bold
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Split into paragraphs
+    html = html.split('\n\n').map(p => {
+      p = p.trim();
+      if (!p) return '';
+
+      const lines = p.split('\n');
+      const isBulletList = lines.every(l => l.match(/^[-*]\s/));
+      const isNumberedList = lines.every(l => l.match(/^\d+\.\s/));
+
+      if (isBulletList) {
+        const items = lines.map(l => `<li>${l.replace(/^[-*]\s/, '')}</li>`).join('');
+        return `<ul>${items}</ul>`;
+      }
+      if (isNumberedList) {
+        const items = lines.map(l => `<li>${l.replace(/^\d+\.\s/, '')}</li>`).join('');
+        return `<ol>${items}</ol>`;
+      }
+
+      return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+    }).join('');
+
+    // Build Sources footer if any citations were used
+    if (usedCitations.size > 0) {
+      const sortedCitations = Array.from(usedCitations).sort((a, b) => a - b);
+      const sourcesHTML = sortedCitations.map(citNum => {
+        const citation = aiCitationMap.find(c => c.index === citNum);
+        if (!citation) return '';
+        const snippet = snippets.find(s => s.id === citation.id);
+        if (!snippet) return '';
+        const preview = snippet.text.length > 60
+          ? snippet.text.substring(0, 60) + '...'
+          : snippet.text;
+        return `
+          <div class="noodle-ai-source-item" data-snippet-id="${snippet.id}">
+            <span class="noodle-ai-source-num">${citNum}</span>
+            <span class="noodle-ai-source-chip" style="background:var(--highlight-${snippet.color})">${colorLabels[snippet.color]}</span>
+            <span class="noodle-ai-source-text">${escapeHtml(preview)}</span>
+          </div>
+        `;
+      }).join('');
+
+      html += `
+        <div class="noodle-ai-sources">
+          <div class="noodle-ai-sources-title">Sources</div>
+          ${sourcesHTML}
+        </div>
+      `;
+    }
+
+    return html;
+  }
+
+  function attachAiEventListeners(hasApiKey, isChat) {
+    if (!sidebar) return;
+    const root = sidebar;
+
+    // Close panel button
+    root.querySelector('.noodle-chat-close-btn')?.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      toggle.classList.remove('docked');
+      toggle.querySelectorAll('.noodle-toggle-btn').forEach(b => b.classList.remove('active'));
+    });
+
+    // API key save
+    const apiKeySaveBtn = root.querySelector('.noodle-ai-apikey-save');
+    if (apiKeySaveBtn) {
+      apiKeySaveBtn.addEventListener('click', () => {
+        const input = root.querySelector('.noodle-ai-apikey-input');
+        const key = input?.value.trim();
+        if (key) {
+          chrome.storage.local.set({ noodleApiKey: key }, () => {
+            showToast('API key saved');
+            renderChatPanel();
+          });
+        }
+      });
+      root.querySelector('.noodle-ai-apikey-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') apiKeySaveBtn.click();
+      });
+      return;
+    }
+
+    // Send button and Enter key
+    const sendBtn = root.querySelector('.noodle-ai-send-btn');
+    const input = root.querySelector('.noodle-ai-input');
+
+    sendBtn?.addEventListener('click', () => handleAiSubmit(input));
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleAiSubmit(input);
+      }
+    });
+
+    // Auto-grow textarea
+    function autoGrow() {
+      if (!input) return;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+    }
+    input?.addEventListener('input', autoGrow);
+
+    // Input autocomplete for commands
+    input?.addEventListener('input', () => {
+      handleAiInputChange(input);
+    });
+
+    // Suggestion chips
+    root.querySelectorAll('.noodle-ai-chip[data-suggestion]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        if (input) input.value = chip.dataset.suggestion;
+        handleAiSubmit(input);
+      });
+    });
+
+    // Context picker toggle
+    root.querySelector('.noodle-ai-context-toggle')?.addEventListener('click', () => {
+      aiContextExpanded = !aiContextExpanded;
+      const contextEl = root.querySelector('.noodle-ai-context');
+      if (contextEl) {
+        contextEl.outerHTML = buildContextPickerHTML();
+        attachContextListeners();
+        reattachContextToggle();
+      }
+    });
+    attachContextListeners();
+
+    // New chat button
+    root.querySelector('.noodle-ai-new-chat-btn')?.addEventListener('click', () => {
+      aiCurrentChatId = null;
+      renderChatPanel();
+    });
+
+    // History toggle
+    root.querySelector('.noodle-ai-history-toggle-btn')?.addEventListener('click', () => {
+      aiHistoryOpen = !aiHistoryOpen;
+      const historyEl = root.querySelector('.noodle-ai-history');
+      if (historyEl) historyEl.classList.toggle('open', aiHistoryOpen);
+    });
+
+    attachHistoryListeners();
+
+    // Citation superscripts and source items in messages
+    attachCitationListeners();
+  }
+
+  function attachCitationListeners() {
+    if (!sidebar) return;
+
+    // Superscript citation numbers
+    sidebar.querySelectorAll('.noodle-ai-cite').forEach(cite => {
+      if (!cite.dataset.listenerAttached) {
+        cite.dataset.listenerAttached = 'true';
+        cite.addEventListener('click', () => {
+          const snippetId = cite.dataset.snippetId;
+          openPanel('snippets');
+          scrollToAndHighlightSnippet(snippetId);
+        });
+      }
+    });
+
+    // Source items in the footer
+    sidebar.querySelectorAll('.noodle-ai-source-item').forEach(item => {
+      if (!item.dataset.listenerAttached) {
+        item.dataset.listenerAttached = 'true';
+        item.addEventListener('click', () => {
+          const snippetId = item.dataset.snippetId;
+          openPanel('snippets');
+          scrollToAndHighlightSnippet(snippetId);
+        });
+      }
+    });
+  }
+
+  function reattachContextToggle() {
+    sidebar?.querySelector('.noodle-ai-context-toggle')?.addEventListener('click', () => {
+      aiContextExpanded = !aiContextExpanded;
+      const ctx = sidebar.querySelector('.noodle-ai-context');
+      if (ctx) {
+        ctx.outerHTML = buildContextPickerHTML();
+        attachContextListeners();
+        reattachContextToggle();
+      }
+    });
+  }
+
+  function attachContextListeners() {
+    if (!sidebar) return;
+
+    sidebar.querySelectorAll('.noodle-ai-folder-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const folderId = cb.dataset.folderId;
+
+        if (folderId === 'all') {
+          if (cb.checked) {
+            aiSelectedFolderIds = ['all'];
+          } else {
+            aiSelectedFolderIds = [];
+          }
+          // Re-render to update disabled states on other checkboxes
+          const contextEl = sidebar.querySelector('.noodle-ai-context');
+          if (contextEl) {
+            contextEl.outerHTML = buildContextPickerHTML();
+            attachContextListeners();
+            reattachContextToggle();
+          }
+          return;
+        }
+
+        // Remove 'all' if user is manually picking folders
+        aiSelectedFolderIds = aiSelectedFolderIds.filter(id => id !== 'all');
+
+        if (cb.checked) {
+          if (!aiSelectedFolderIds.includes(folderId)) aiSelectedFolderIds.push(folderId);
+        } else {
+          aiSelectedFolderIds = aiSelectedFolderIds.filter(x => x !== folderId);
+        }
+
+        // Update the "All" checkbox state
+        const allCb = sidebar.querySelector('.noodle-ai-folder-checkbox[data-folder-id="all"]');
+        if (allCb) allCb.checked = false;
+
+        // Update count in toggle
+        const toggleBtn = sidebar.querySelector('.noodle-ai-context-toggle span:first-child');
+        if (toggleBtn) {
+          const resolvedCount = getSelectedSnippetIds().length;
+          toggleBtn.textContent = `Snippet context (${resolvedCount}/${snippets.length} snippets)`;
+        }
+      });
+    });
+  }
+
+  function attachHistoryListeners() {
+    if (!sidebar) return;
+
+    // Close history panel button (X inside the panel header)
+    sidebar.querySelector('.noodle-ai-history-close-btn')?.addEventListener('click', () => {
+      aiHistoryOpen = false;
+      const historyEl = sidebar.querySelector('.noodle-ai-history');
+      if (historyEl) historyEl.classList.remove('open');
+    });
+
+    sidebar.querySelectorAll('.noodle-ai-history-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        if (e.target.classList.contains('noodle-ai-history-delete')) return;
+        aiCurrentChatId = item.dataset.chatId;
+        aiHistoryOpen = false;
+        renderChatPanel();
+      });
+    });
+
+    sidebar.querySelectorAll('.noodle-ai-history-delete').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const chatId = btn.dataset.chatId;
+        aiChatHistory = aiChatHistory.filter(c => c.id !== chatId);
+        saveChatHistory();
+        if (aiCurrentChatId === chatId) {
+          aiCurrentChatId = null;
+        }
+        renderChatPanel();
+      });
+    });
+  }
+
+  function handleAiSubmit(inputEl) {
+    if (!inputEl || aiIsStreaming) return;
+
+    const text = inputEl.value.trim();
+    if (!text) return;
+
+    const command = parseAiCommand(text);
+
+    if (!aiCurrentChatId) {
+      const newChat = {
+        id: Date.now().toString(),
+        title: text.substring(0, 60),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messages: []
+      };
+      aiChatHistory.unshift(newChat);
+      aiCurrentChatId = newChat.id;
+
+      if (aiChatHistory.length > 50) {
+        aiChatHistory = aiChatHistory.slice(0, 50);
+      }
+    }
+
+    const chat = aiChatHistory.find(c => c.id === aiCurrentChatId);
+    if (!chat) return;
+
+    chat.messages.push({
+      role: 'user',
+      content: text,
+      timestamp: new Date().toISOString(),
+      command: command?.name || null
+    });
+    chat.updatedAt = new Date().toISOString();
+    saveChatHistory();
+
+    renderChatPanel();
+
+    sendAiRequest(chat, command);
+  }
+
+  function parseAiCommand(text) {
+    const match = text.match(/^\/(\w+)\s*(.*)/);
+    if (!match) return null;
+
+    const cmdName = '/' + match[1];
+    const arg = match[2].trim();
+
+    const command = AI_COMMANDS.find(c => c.name === cmdName);
+    if (!command) return null;
+
+    return { name: cmdName, arg };
+  }
+
+  function buildSystemPrompt(command) {
+    let basePrompt = `You are Noodle AI, a helpful assistant that analyzes text snippets saved by the user from web pages. You help users understand, summarize, and find patterns in their saved research.
+
+When referencing snippets, use numbered citation markers like [1], [2], [3] etc. corresponding to the snippet numbers provided in the context. Place citations at the end of the relevant sentence or clause, not mid-sentence. You can group multiple citations like [1][2]. These will be rendered as clickable superscript numbers with a Sources section at the bottom.
+
+Keep responses concise and well-structured. Use markdown-style formatting: **bold** for emphasis, bullet lists with - prefix, numbered lists with 1. prefix. Write flowing prose — do NOT paste or repeat snippet text back to the user.`;
+
+    if (command) {
+      const commandPrompts = {
+        '/summarize': 'Provide a clear, structured summary of the provided snippets. Group related ideas and highlight key themes.',
+        '/analyze': 'Provide a deep analysis of the specified snippet or topic. Consider implications, context, and significance.',
+        '/compare': 'Compare and contrast the provided snippets. Identify similarities, differences, and complementary ideas.',
+        '/patterns': 'Identify recurring themes, patterns, and motifs across the provided snippets.',
+        '/tags': 'Suggest descriptive tags for each snippet. Provide 2-4 tags per snippet.',
+        '/questions': 'Generate thoughtful research questions inspired by the provided snippets.',
+        '/export': 'Format the analysis of these snippets as clean markdown suitable for export. Include headers, key points, and organized sections.',
+        '/outline': 'Create a structured outline or hierarchy from the provided snippets. Group related content under appropriate headings.',
+        '/gaps': 'Analyze the provided snippets and identify potential gaps in the research. What topics are missing or underexplored?',
+        '/connect': 'Find non-obvious connections between the provided snippets. Look for shared concepts, complementary ideas, or hidden relationships.',
+        '/actionable': 'Transform the insights from these snippets into concrete action items. Be specific and practical.',
+        '/cite': 'Format each snippet as a proper citation, including the source URL and relevant context.'
+      };
+
+      basePrompt += '\n\n' + (commandPrompts[command.name] || '');
+    }
+
+    return basePrompt;
+  }
+
+  // Build a mapping from citation numbers to snippet IDs for the current context
+  let aiCitationMap = []; // [{id, index}] — index is 1-based
+
+  function buildContextMessages(chat, command) {
+    const selectedIds = getSelectedSnippetIds();
+    const selectedSnippets = snippets.filter(s =>
+      selectedIds.includes(s.id)
+    );
+
+    // Build citation map: [1] = first snippet, [2] = second, etc.
+    aiCitationMap = selectedSnippets.map((s, i) => ({ id: s.id, index: i + 1 }));
+
+    let contextBlock = '';
+    if (selectedSnippets.length > 0) {
+      contextBlock = 'Here are my saved snippets for context:\n\n';
+      selectedSnippets.forEach((s, i) => {
+        const truncated = s.text.length > 200
+          ? s.text.substring(0, 200) + '...'
+          : s.text;
+        const folder = folders.find(f => f.id === s.folderId);
+        contextBlock += `[${i + 1}] (${colorLabels[s.color]}${folder ? ', folder: ' + folder.name : ''}):\n"${truncated}"\nSource: ${s.url}\n\n`;
+      });
+    }
+
+    const apiMessages = [];
+
+    chat.messages.forEach((msg, index) => {
+      if (msg.role === 'user') {
+        let content = msg.content;
+        if (index === 0 && contextBlock) {
+          content = contextBlock + '\n---\n\nUser question: ' + content;
+        }
+        apiMessages.push({ role: 'user', content });
+      } else {
+        apiMessages.push({ role: 'assistant', content: msg.content });
+      }
+    });
+
+    return apiMessages;
+  }
+
+  function sendAiRequest(chat, command) {
+    aiIsStreaming = true;
+    aiStreamBuffer = '';
+    aiCurrentRequestId = Date.now().toString();
+
+    const systemPrompt = buildSystemPrompt(command);
+    const messages = buildContextMessages(chat, command);
+
+    const messagesEl = sidebar?.querySelector('.noodle-ai-messages');
+    if (messagesEl) {
+      messagesEl.insertAdjacentHTML('beforeend', `
+        <div class="noodle-ai-typing" id="noodle-typing-indicator">
+          <span class="noodle-ai-typing-dot"></span>
+          <span class="noodle-ai-typing-dot"></span>
+          <span class="noodle-ai-typing-dot"></span>
+        </div>
+      `);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    const sendBtn = sidebar?.querySelector('.noodle-ai-send-btn');
+    if (sendBtn) sendBtn.disabled = true;
+
+    chrome.runtime.sendMessage({
+      type: 'noodleAiRequest',
+      requestId: aiCurrentRequestId,
+      systemPrompt,
+      messages
+    });
+  }
+
+  function handleStreamStart(requestId) {
+    if (requestId !== aiCurrentRequestId) return;
+
+    const indicator = document.getElementById('noodle-typing-indicator');
+    if (indicator) indicator.remove();
+
+    const messagesEl = sidebar?.querySelector('.noodle-ai-messages');
+    if (messagesEl) {
+      messagesEl.insertAdjacentHTML('beforeend', `
+        <div class="noodle-ai-message assistant" id="noodle-streaming-message"></div>
+      `);
+    }
+  }
+
+  function handleStreamDelta(requestId, text) {
+    if (requestId !== aiCurrentRequestId) return;
+
+    aiStreamBuffer += text;
+
+    const streamingMsg = document.getElementById('noodle-streaming-message');
+    if (streamingMsg) {
+      streamingMsg.innerHTML = renderAiContent(aiStreamBuffer);
+
+      const messagesEl = sidebar?.querySelector('.noodle-ai-messages');
+      if (messagesEl) {
+        const isNearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
+        if (isNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+    }
+  }
+
+  function handleStreamEnd(requestId) {
+    if (requestId !== aiCurrentRequestId) return;
+
+    const chat = aiChatHistory.find(c => c.id === aiCurrentChatId);
+    if (chat) {
+      chat.messages.push({
+        role: 'assistant',
+        content: aiStreamBuffer,
+        timestamp: new Date().toISOString(),
+        command: null
+      });
+      chat.updatedAt = new Date().toISOString();
+      saveChatHistory();
+    }
+
+    const streamingMsg = document.getElementById('noodle-streaming-message');
+    if (streamingMsg) streamingMsg.removeAttribute('id');
+
+    // Attach citation click handlers
+    attachCitationListeners();
+
+    aiIsStreaming = false;
+    aiStreamBuffer = '';
+    aiCurrentRequestId = null;
+
+    const sendBtn = sidebar?.querySelector('.noodle-ai-send-btn');
+    if (sendBtn) sendBtn.disabled = false;
+
+    const input = sidebar?.querySelector('.noodle-ai-input');
+    if (input) input.focus();
+  }
+
+  function handleStreamError(requestId, error) {
+    if (requestId !== aiCurrentRequestId) return;
+
+    const indicator = document.getElementById('noodle-typing-indicator');
+    if (indicator) indicator.remove();
+
+    const messagesEl = sidebar?.querySelector('.noodle-ai-messages');
+    if (messagesEl) {
+      messagesEl.insertAdjacentHTML('beforeend', `
+        <div class="noodle-ai-message assistant" style="color:#e74c3c;">
+          Error: ${escapeHtml(error)}
+        </div>
+      `);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    aiIsStreaming = false;
+    aiStreamBuffer = '';
+    aiCurrentRequestId = null;
+
+    const sendBtn = sidebar?.querySelector('.noodle-ai-send-btn');
+    if (sendBtn) sendBtn.disabled = false;
+  }
+
+  function saveChatHistory() {
+    chrome.storage.local.set({
+      noodleChatHistory: aiChatHistory,
+      noodleActiveChatId: aiCurrentChatId
+    });
+  }
+
+  function handleAiInputChange(inputEl) {
+    const text = inputEl.value;
+    const commandsEl = sidebar?.querySelector('.noodle-ai-commands');
+    if (!commandsEl) return;
+
+    if (text.startsWith('/')) {
+      const partial = text.toLowerCase();
+      const matching = AI_COMMANDS.filter(cmd => cmd.name.startsWith(partial));
+
+      if (matching.length > 0 && text !== matching[0].name) {
+        commandsEl.style.display = '';
+        commandsEl.innerHTML = `
+          <div class="noodle-ai-commands-title">Commands</div>
+          ${matching.map(cmd => `
+            <div class="noodle-ai-command-item" data-command="${cmd.name}">
+              <span class="noodle-ai-command-name">${cmd.name}</span>
+              <span class="noodle-ai-command-desc">${cmd.desc}</span>
+            </div>
+          `).join('')}
+        `;
+        commandsEl.querySelectorAll('.noodle-ai-command-item').forEach(item => {
+          item.addEventListener('click', () => {
+            inputEl.value = item.dataset.command + ' ';
+            inputEl.focus();
+          });
+        });
+      } else {
+        commandsEl.style.display = 'none';
+      }
+    } else {
+      commandsEl.style.display = text.length === 0 ? '' : 'none';
+    }
   }
 
   // Start the extension
