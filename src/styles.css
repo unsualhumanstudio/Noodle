@@ -180,7 +180,7 @@
   position: fixed;
   top: 0;
   right: 0;
-  width: 320px;
+  width: 380px;
   height: 100vh;
   background: #fafafa;
   border-left: 1px solid #e5e5e5;
@@ -712,7 +712,7 @@
 
 /* Docked state — pill sits flush against the left edge of the panel */
 .claude-highlighter-toggle.docked {
-  right: 320px;
+  right: 380px;
   border-radius: 28px 0 0 28px;
   box-shadow: -2px 0 12px rgba(0, 0, 0, 0.1);
 }
@@ -1091,6 +1091,7 @@
   display: flex;
   flex-direction: column;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
 }
 
 .noodle-ai-input-box:focus-within {
@@ -1122,8 +1123,155 @@
 .noodle-ai-input-box-footer {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   padding: 6px 8px 8px;
+  gap: 6px;
+}
+
+/* Left side of footer: + button + chips */
+.noodle-ai-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* + Add context button */
+.noodle-ai-context-add-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid #d0d0d0;
+  background: white;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.noodle-ai-context-add-btn:hover,
+.noodle-ai-context-add-btn.active {
+  border-color: #888;
+  background: #f5f5f5;
+  color: #333;
+}
+
+/* Context dropdown menu — positioned fixed by JS to escape overflow:hidden containers */
+.noodle-ai-context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.14);
+  min-width: 210px;
+  z-index: 10010;
+  overflow: hidden;
+}
+
+.noodle-ai-ctx-menu-title {
+  padding: 10px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.noodle-ai-ctx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  transition: background 0.1s ease;
+}
+
+.noodle-ai-ctx-menu-item:hover {
+  background: #f5f5f5;
+}
+
+.noodle-ai-ctx-menu-item.selected {
+  background: #f0f0f0;
+}
+
+.noodle-ai-ctx-menu-item input[type="checkbox"] {
+  accent-color: #333;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.noodle-ai-ctx-menu-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.noodle-ai-ctx-menu-count {
+  font-size: 11px;
+  color: #bbb;
+  flex-shrink: 0;
+}
+
+/* Selected context chips — sits above the input box */
+.noodle-ai-context-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 0 2px 6px;
+}
+
+.noodle-ai-context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f0f0f0;
+  border: 1px solid #e0e0e0;
+  border-radius: 100px;
+  padding: 3px 4px 3px 8px;
+  font-size: 12px;
+  color: #444;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.noodle-ai-chip-count {
+  color: #999;
+  font-size: 11px;
+}
+
+.noodle-ai-chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #aaa;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+
+.noodle-ai-chip-remove:hover {
+  background: #ddd;
+  color: #333;
 }
 
 .noodle-ai-send-btn {
@@ -1230,103 +1378,7 @@
   color: #888;
 }
 
-/* Snippet context picker */
-.noodle-ai-context {
-  flex-shrink: 0;
-}
-
-.noodle-ai-context-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
-  cursor: pointer;
-  background: none;
-  border: none;
-  width: 100%;
-  font-size: 12px;
-  color: #666;
-  font-family: inherit;
-  transition: background 0.1s ease;
-}
-
-.noodle-ai-context-toggle:hover {
-  background: #f8f8f8;
-}
-
-.noodle-ai-context-toggle .chevron {
-  transition: transform 0.15s ease;
-  font-size: 10px;
-}
-
-.noodle-ai-context-toggle.expanded .chevron {
-  transform: rotate(180deg);
-}
-
-.noodle-ai-context-list {
-  max-height: 200px;
-  overflow-y: auto;
-  padding: 0 16px 8px;
-}
-
-.noodle-ai-context-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 0;
-  border-bottom: 1px solid #f0f0f0;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.noodle-ai-context-item:last-child {
-  border-bottom: none;
-}
-
-.noodle-ai-context-checkbox {
-  margin-top: 2px;
-  accent-color: #4F4D4D;
-}
-
-.noodle-ai-context-text {
-  font-size: 12px;
-  color: #555;
-  line-height: 1.4;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.noodle-ai-context-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  color: #444;
-}
-
-.noodle-ai-context-count {
-  font-size: 11px;
-  color: #999;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.noodle-ai-select-all {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0 8px;
-  font-size: 11px;
-  color: #888;
-  cursor: pointer;
-}
+/* Context picker — see .noodle-ai-context-add-btn / .noodle-ai-context-chip / .noodle-ai-context-menu in input box footer styles above */
 
 /* Chat messages */
 .noodle-ai-messages {
@@ -1697,28 +1749,6 @@
   border-top: 1px solid #ebebeb;
 }
 
-/* Context picker sits inside the input area, above the box */
-.noodle-ai-input-area .noodle-ai-context {
-  border: none;
-  margin-bottom: 6px;
-}
-
-.noodle-ai-input-area .noodle-ai-context-toggle {
-  padding: 5px 4px;
-  font-size: 11px;
-  color: #999;
-  border-radius: 6px;
-}
-
-.noodle-ai-input-area .noodle-ai-context-toggle:hover {
-  background: #f0f0f0;
-  color: #555;
-}
-
-.noodle-ai-input-area .noodle-ai-context-list {
-  max-height: 140px;
-  padding: 0 4px 4px;
-}
 
 /* Chat panel header — reuses sidebar header styles */
 .noodle-chat-header {

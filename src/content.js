@@ -39,7 +39,6 @@
   let aiIsStreaming = false;
   let aiCurrentRequestId = null;
   let aiStreamBuffer = '';
-  let aiContextExpanded = false;
   let aiHistoryOpen = false;
 
   // Initialize
@@ -1563,12 +1562,12 @@
 
   function renderChatPanel() {
     if (!sidebar) return;
+    closeContextMenu(); // dismiss floating menu if open
 
     chrome.storage.local.get(['noodleChatHistory', 'noodleApiKey'], (result) => {
       aiChatHistory = result.noodleChatHistory || [];
       const hasApiKey = !!result.noodleApiKey;
       aiSelectedFolderIds = ['all'];
-      aiContextExpanded = false;
       aiHistoryOpen = false;
 
       const currentChat = aiCurrentChatId
@@ -1591,8 +1590,6 @@
   }
 
   function buildChatPanelHTML(hasApiKey, currentChat, isChat) {
-    const contextPickerHTML = buildContextPickerHTML();
-
     const clockIconSVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
 
     const headerHTML = `
@@ -1624,12 +1621,19 @@
 
     const inputBoxHTML = (placeholder) => `
       <div class="noodle-ai-input-area">
-        ${contextPickerHTML}
+        ${snippets.length > 0 ? buildContextChipsHTML() : ''}
         <div class="noodle-ai-input-box">
           <textarea class="noodle-ai-input" placeholder="${placeholder}" rows="1"></textarea>
           <div class="noodle-ai-input-box-footer">
+            <div class="noodle-ai-footer-left">
+              ${snippets.length > 0 ? `
+                <button class="noodle-ai-context-add-btn" title="Add context" aria-label="Add snippet context">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                </button>
+              ` : ''}
+            </div>
             <button class="noodle-ai-send-btn" title="Send">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" d="M5.5 13L18 6m-1.75 17.5h.25a72.7 72.7 0 0 1 6.504-21.962L23.26 1L23 .74l-.538.256A72.7 72.7 0 0 1 .5 7.5v.25l5 5v7.75h.25l1.774-1.69a12 12 0 0 1 2.313-1.723z" stroke-width="1"/></svg>
             </button>
           </div>
         </div>
@@ -1692,7 +1696,6 @@
   // Reset AI state when leaving chat panel
   function closeAiCommandBar() {
     aiHistoryOpen = false;
-    aiContextExpanded = false;
   }
 
   // Resolve selected folders to actual snippet IDs
@@ -1707,53 +1710,83 @@
     }).map(s => s.id);
   }
 
-  function buildContextPickerHTML() {
-    if (snippets.length === 0) return '';
-
-    const resolvedCount = getSelectedSnippetIds().length;
-    const totalCount = snippets.length;
+  function buildContextChipsHTML() {
     const isAll = aiSelectedFolderIds.includes('all');
 
-    // Build folder options: "All", "Unfiled", then each folder
+    if (isAll) {
+      const totalCount = snippets.length;
+      return `
+        <div class="noodle-ai-context-chips">
+          <span class="noodle-ai-context-chip" data-folder-id="all">
+            All snippets <span class="noodle-ai-chip-count">${totalCount}</span>
+            <button class="noodle-ai-chip-remove" data-folder-id="all" title="Remove">&times;</button>
+          </span>
+        </div>
+      `;
+    }
+
+    if (aiSelectedFolderIds.length === 0) return '<div class="noodle-ai-context-chips"></div>';
+
     const unfiledCount = snippets.filter(s => !s.folderId).length;
-    const folderCounts = folders.map(f => ({
-      ...f,
-      count: snippets.filter(s => s.folderId === f.id).length
-    }));
+    const chips = aiSelectedFolderIds.map(id => {
+      if (id === 'unfiled') {
+        return `<span class="noodle-ai-context-chip" data-folder-id="unfiled">
+          Unfiled <span class="noodle-ai-chip-count">${unfiledCount}</span>
+          <button class="noodle-ai-chip-remove" data-folder-id="unfiled" title="Remove">&times;</button>
+        </span>`;
+      }
+      const folder = folders.find(f => f.id === id);
+      if (!folder) return '';
+      const count = snippets.filter(s => s.folderId === id).length;
+      return `<span class="noodle-ai-context-chip" data-folder-id="${id}">
+        ${escapeHtml(folder.name)} <span class="noodle-ai-chip-count">${count}</span>
+        <button class="noodle-ai-chip-remove" data-folder-id="${id}" title="Remove">&times;</button>
+      </span>`;
+    }).filter(Boolean).join('');
+
+    return `<div class="noodle-ai-context-chips">${chips}</div>`;
+  }
+
+  function buildContextMenuInnerHTML() {
+    const isAll = aiSelectedFolderIds.includes('all');
+    const totalCount = snippets.length;
+    const unfiledCount = snippets.filter(s => !s.folderId).length;
+
+    const allItem = `
+      <label class="noodle-ai-ctx-menu-item ${isAll ? 'selected' : ''}">
+        <input type="checkbox" class="noodle-ai-folder-checkbox" data-folder-id="all" ${isAll ? 'checked' : ''} />
+        <span class="noodle-ai-ctx-menu-label">All snippets</span>
+        <span class="noodle-ai-ctx-menu-count">${totalCount}</span>
+      </label>
+    `;
+
+    const unfiledItem = unfiledCount > 0 ? `
+      <label class="noodle-ai-ctx-menu-item ${!isAll && aiSelectedFolderIds.includes('unfiled') ? 'selected' : ''}">
+        <input type="checkbox" class="noodle-ai-folder-checkbox" data-folder-id="unfiled"
+               ${isAll || aiSelectedFolderIds.includes('unfiled') ? 'checked' : ''} ${isAll ? 'disabled' : ''} />
+        <span class="noodle-ai-ctx-menu-label">Unfiled</span>
+        <span class="noodle-ai-ctx-menu-count">${unfiledCount}</span>
+      </label>
+    ` : '';
+
+    const folderItems = folders.map(f => {
+      const count = snippets.filter(s => s.folderId === f.id).length;
+      const isSelected = isAll || aiSelectedFolderIds.includes(f.id);
+      return `
+        <label class="noodle-ai-ctx-menu-item ${!isAll && isSelected ? 'selected' : ''}">
+          <input type="checkbox" class="noodle-ai-folder-checkbox" data-folder-id="${f.id}"
+                 ${isSelected ? 'checked' : ''} ${isAll ? 'disabled' : ''} />
+          <span class="noodle-ai-ctx-menu-label">${escapeHtml(f.name)}</span>
+          <span class="noodle-ai-ctx-menu-count">${count}</span>
+        </label>
+      `;
+    }).join('');
 
     return `
-      <div class="noodle-ai-context">
-        <button class="noodle-ai-context-toggle ${aiContextExpanded ? 'expanded' : ''}">
-          <span>Snippet context (${resolvedCount}/${totalCount} snippets)</span>
-          <span class="chevron">&#9660;</span>
-        </button>
-        ${aiContextExpanded ? `
-          <div class="noodle-ai-context-list">
-            <label class="noodle-ai-context-item">
-              <input type="checkbox" class="noodle-ai-folder-checkbox"
-                     data-folder-id="all" ${isAll ? 'checked' : ''} />
-              <span class="noodle-ai-context-text" style="font-weight:500;">All folders</span>
-              <span class="noodle-ai-context-count">${totalCount}</span>
-            </label>
-            ${unfiledCount > 0 ? `
-              <label class="noodle-ai-context-item">
-                <input type="checkbox" class="noodle-ai-folder-checkbox"
-                       data-folder-id="unfiled" ${isAll || aiSelectedFolderIds.includes('unfiled') ? 'checked' : ''} ${isAll ? 'disabled' : ''} />
-                <span class="noodle-ai-context-text">Unfiled</span>
-                <span class="noodle-ai-context-count">${unfiledCount}</span>
-              </label>
-            ` : ''}
-            ${folderCounts.map(f => `
-              <label class="noodle-ai-context-item">
-                <input type="checkbox" class="noodle-ai-folder-checkbox"
-                       data-folder-id="${f.id}" ${isAll || aiSelectedFolderIds.includes(f.id) ? 'checked' : ''} ${isAll ? 'disabled' : ''} />
-                <span class="noodle-ai-context-text">${escapeHtml(f.name)}</span>
-                <span class="noodle-ai-context-count">${f.count}</span>
-              </label>
-            `).join('')}
-          </div>
-        ` : ''}
-      </div>
+      <div class="noodle-ai-ctx-menu-title">Add context</div>
+      ${allItem}
+      ${unfiledItem}
+      ${folderItems}
     `;
   }
 
@@ -1975,16 +2008,7 @@
       });
     });
 
-    // Context picker toggle
-    root.querySelector('.noodle-ai-context-toggle')?.addEventListener('click', () => {
-      aiContextExpanded = !aiContextExpanded;
-      const contextEl = root.querySelector('.noodle-ai-context');
-      if (contextEl) {
-        contextEl.outerHTML = buildContextPickerHTML();
-        attachContextListeners();
-        reattachContextToggle();
-      }
-    });
+    // Context: + button opens/closes the dropdown menu
     attachContextListeners();
 
     // New chat button
@@ -2035,61 +2059,110 @@
   }
 
   function reattachContextToggle() {
-    sidebar?.querySelector('.noodle-ai-context-toggle')?.addEventListener('click', () => {
-      aiContextExpanded = !aiContextExpanded;
-      const ctx = sidebar.querySelector('.noodle-ai-context');
-      if (ctx) {
-        ctx.outerHTML = buildContextPickerHTML();
-        attachContextListeners();
-        reattachContextToggle();
-      }
+    // No-op
+  }
+
+  function refreshChipsUI() {
+    const chipsEl = sidebar?.querySelector('.noodle-ai-context-chips');
+    if (chipsEl) {
+      chipsEl.outerHTML = buildContextChipsHTML();
+      attachContextChipListeners();
+    }
+  }
+
+  function attachContextChipListeners() {
+    if (!sidebar) return;
+    sidebar.querySelectorAll('.noodle-ai-chip-remove').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const folderId = btn.dataset.folderId;
+        if (folderId === 'all') {
+          aiSelectedFolderIds = [];
+        } else {
+          aiSelectedFolderIds = aiSelectedFolderIds.filter(id => id !== folderId);
+        }
+        refreshChipsUI();
+      });
+    });
+  }
+
+  function closeContextMenu() {
+    const existing = document.getElementById('noodle-context-menu-float');
+    if (existing) existing.remove();
+    sidebar?.querySelector('.noodle-ai-context-add-btn')?.classList.remove('active');
+  }
+
+  function openContextMenu(addBtn) {
+    closeContextMenu();
+
+    // Append directly to noodleRoot — completely outside any overflow:hidden ancestor
+    const menuEl = document.createElement('div');
+    menuEl.id = 'noodle-context-menu-float';
+    menuEl.className = 'noodle-ai-context-menu';
+    menuEl.innerHTML = buildContextMenuInnerHTML();
+    noodleRoot.appendChild(menuEl);
+
+    // Position fixed, above the + button
+    const rect = addBtn.getBoundingClientRect();
+    menuEl.style.position = 'fixed';
+    menuEl.style.left = rect.left + 'px';
+    menuEl.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+    menuEl.style.top = 'auto';
+
+    addBtn.classList.add('active');
+    attachContextMenuCheckboxes(menuEl);
+
+    // Click outside to close
+    setTimeout(() => {
+      document.addEventListener('click', function onOutside(e) {
+        if (!menuEl.contains(e.target) && !addBtn.contains(e.target)) {
+          closeContextMenu();
+          document.removeEventListener('click', onOutside);
+        }
+      });
+    }, 0);
+  }
+
+  function attachContextMenuCheckboxes(menuEl) {
+    menuEl.querySelectorAll('.noodle-ai-folder-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const folderId = cb.dataset.folderId;
+        if (folderId === 'all') {
+          aiSelectedFolderIds = cb.checked ? ['all'] : [];
+        } else {
+          aiSelectedFolderIds = aiSelectedFolderIds.filter(id => id !== 'all');
+          if (cb.checked) {
+            if (!aiSelectedFolderIds.includes(folderId)) aiSelectedFolderIds.push(folderId);
+          } else {
+            aiSelectedFolderIds = aiSelectedFolderIds.filter(x => x !== folderId);
+          }
+        }
+        // Update chips in the sidebar input box
+        refreshChipsUI();
+        // Re-render menu contents to update checked/selected states
+        menuEl.innerHTML = buildContextMenuInnerHTML();
+        attachContextMenuCheckboxes(menuEl);
+      });
     });
   }
 
   function attachContextListeners() {
     if (!sidebar) return;
 
-    sidebar.querySelectorAll('.noodle-ai-folder-checkbox').forEach(cb => {
-      cb.addEventListener('change', () => {
-        const folderId = cb.dataset.folderId;
+    const addBtn = sidebar.querySelector('.noodle-ai-context-add-btn');
+    if (!addBtn) return;
 
-        if (folderId === 'all') {
-          if (cb.checked) {
-            aiSelectedFolderIds = ['all'];
-          } else {
-            aiSelectedFolderIds = [];
-          }
-          // Re-render to update disabled states on other checkboxes
-          const contextEl = sidebar.querySelector('.noodle-ai-context');
-          if (contextEl) {
-            contextEl.outerHTML = buildContextPickerHTML();
-            attachContextListeners();
-            reattachContextToggle();
-          }
-          return;
-        }
-
-        // Remove 'all' if user is manually picking folders
-        aiSelectedFolderIds = aiSelectedFolderIds.filter(id => id !== 'all');
-
-        if (cb.checked) {
-          if (!aiSelectedFolderIds.includes(folderId)) aiSelectedFolderIds.push(folderId);
-        } else {
-          aiSelectedFolderIds = aiSelectedFolderIds.filter(x => x !== folderId);
-        }
-
-        // Update the "All" checkbox state
-        const allCb = sidebar.querySelector('.noodle-ai-folder-checkbox[data-folder-id="all"]');
-        if (allCb) allCb.checked = false;
-
-        // Update count in toggle
-        const toggleBtn = sidebar.querySelector('.noodle-ai-context-toggle span:first-child');
-        if (toggleBtn) {
-          const resolvedCount = getSelectedSnippetIds().length;
-          toggleBtn.textContent = `Snippet context (${resolvedCount}/${snippets.length} snippets)`;
-        }
-      });
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const existing = document.getElementById('noodle-context-menu-float');
+      if (existing) {
+        closeContextMenu();
+      } else {
+        openContextMenu(addBtn);
+      }
     });
+
+    attachContextChipListeners();
   }
 
   function attachHistoryListeners() {
