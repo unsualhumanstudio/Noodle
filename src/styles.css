@@ -1140,24 +1140,22 @@
 
 /* + Add context button */
 .noodle-ai-context-add-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 1.5px solid #d0d0d0;
-  background: white;
-  color: #666;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  color: #aaa;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  padding: 0;
+  transition: color 0.15s;
 }
 
 .noodle-ai-context-add-btn:hover,
 .noodle-ai-context-add-btn.active {
-  border-color: #888;
-  background: #f5f5f5;
   color: #333;
 }
 
@@ -1448,21 +1446,21 @@
 /* Citation superscripts in AI responses */
 .noodle-ai-cite {
   display: inline;
-  font-size: 10px;
-  font-weight: 600;
-  color: #666;
+  font-size: 9px;
+  font-weight: 500;
+  color: #888;
   cursor: pointer;
-  padding: 0 1px;
+  padding: 0;
   margin: 0 1px;
   vertical-align: super;
   line-height: 0;
   transition: color 0.1s ease;
   text-decoration: none;
+  font-feature-settings: "tnum";
 }
 
 .noodle-ai-cite:hover {
   color: #333;
-  text-decoration: underline;
 }
 
 /* Sources footer in AI responses */

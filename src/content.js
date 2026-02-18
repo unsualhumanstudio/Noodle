@@ -1628,7 +1628,7 @@
             <div class="noodle-ai-footer-left">
               ${snippets.length > 0 ? `
                 <button class="noodle-ai-context-add-btn" title="Add context" aria-label="Add snippet context">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                 </button>
               ` : ''}
             </div>
@@ -1884,7 +1884,7 @@
       const snippet = snippets.find(s => s.id === citation.id);
       if (!snippet) return match;
       usedCitations.add(citNum);
-      return `<sup class="noodle-ai-cite" data-snippet-id="${snippet.id}" data-cite-num="${citNum}" title="${escapeHtml(snippet.text.substring(0, 100))}">${citNum}</sup>`;
+      return `<sup class="noodle-ai-cite" data-snippet-id="${snippet.id}" data-cite-num="${citNum}">[${citNum}]</sup>`;
     });
 
     // Bold
@@ -2255,9 +2255,9 @@
   function buildSystemPrompt(command) {
     let basePrompt = `You are Noodle AI, a helpful assistant that analyzes text snippets saved by the user from web pages. You help users understand, summarize, and find patterns in their saved research.
 
-When referencing snippets, use numbered citation markers like [1], [2], [3] etc. corresponding to the snippet numbers provided in the context. Place citations at the end of the relevant sentence or clause, not mid-sentence. You can group multiple citations like [1][2]. These will be rendered as clickable superscript numbers with a Sources section at the bottom.
+When referencing snippets, place ONLY the bare citation marker [1], [2], [3] etc. at the end of the relevant sentence — never inline mid-sentence and never surrounded by or mixed with the snippet's own text. The marker alone is the citation; do not quote or paraphrase the snippet inline. You can group multiple citations like [1][2]. These render as clickable superscript footnotes with a Sources section at the bottom.
 
-Keep responses concise and well-structured. Use markdown-style formatting: **bold** for emphasis, bullet lists with - prefix, numbered lists with 1. prefix. Write flowing prose — do NOT paste or repeat snippet text back to the user.`;
+Keep responses concise and well-structured. Use markdown-style formatting: **bold** for emphasis, bullet lists with - prefix, numbered lists with 1. prefix. Write flowing prose — never paste, quote, or repeat snippet text inline.`;
 
     if (command) {
       const commandPrompts = {
