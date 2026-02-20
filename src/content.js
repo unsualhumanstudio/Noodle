@@ -1921,7 +1921,8 @@
       `;
     }
 
-    const rendered = renderAiContent(message.content);
+    // Pass persisted webCitations (if any) so history renders correctly
+    const rendered = renderAiContent(message.content, message.webCitations || null);
     return `
       <div class="noodle-ai-message assistant">
         ${rendered}
@@ -1929,8 +1930,11 @@
     `;
   }
 
-  function renderAiContent(text) {
+  function renderAiContent(text, webCitsOverride) {
     let html = escapeHtml(text);
+
+    // Use persisted citations when rendering history, or live aiWebCitations during streaming
+    const resolvedWebCits = webCitsOverride || aiWebCitations;
 
     // Track which citation numbers are used in this response
     const usedCitations = new Set();
@@ -1939,7 +1943,7 @@
     // Convert web citations {W1}, {W2} etc. to superscript links
     html = html.replace(/\{W(\d+)\}/g, (match, num) => {
       const citNum = parseInt(num);
-      const webCit = aiWebCitations.find(c => c.index === citNum);
+      const webCit = resolvedWebCits.find(c => c.index === citNum);
       if (!webCit) return match;
       usedWebCitations.add(citNum);
       const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(webCit.url).hostname)}&sz=16`;
@@ -2016,7 +2020,7 @@
     if (usedWebCitations.size > 0) {
       const sortedWeb = Array.from(usedWebCitations).sort((a, b) => a - b);
       const webSourcesHTML = sortedWeb.map(citNum => {
-        const webCit = aiWebCitations.find(c => c.index === citNum);
+        const webCit = resolvedWebCits.find(c => c.index === citNum);
         if (!webCit) return '';
         let hostname = '';
         try { hostname = new URL(webCit.url).hostname.replace(/^www\./, ''); } catch(e) { hostname = webCit.url; }
@@ -2512,12 +2516,17 @@ You also have access to a web search tool. Use it proactively to find current, r
 
     const chat = aiChatHistory.find(c => c.id === aiCurrentChatId);
     if (chat) {
-      chat.messages.push({
+      const msg = {
         role: 'assistant',
         content: aiStreamBuffer,
         timestamp: new Date().toISOString(),
         command: null
-      });
+      };
+      // Persist web citations so they survive page navigation / history re-opens
+      if (aiWebCitations.length > 0) {
+        msg.webCitations = [...aiWebCitations];
+      }
+      chat.messages.push(msg);
       chat.updatedAt = new Date().toISOString();
       saveChatHistory();
     }
