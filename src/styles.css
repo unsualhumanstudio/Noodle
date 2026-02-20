@@ -1876,3 +1876,192 @@
 .noodle-sidebar-history-item:hover .noodle-sidebar-history-delete {
   display: block;
 }
+
+/* ---- Research mode styles ---- */
+
+/* Right side of input footer: research btn + send btn */
+.noodle-ai-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Research toggle button */
+.noodle-ai-research-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  color: #aaa;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.noodle-ai-research-btn:hover:not(:disabled) {
+  color: #555;
+  background: #f0f0f0;
+}
+
+.noodle-ai-research-btn.active {
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+.noodle-ai-research-btn.active:hover {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.noodle-ai-research-btn:disabled,
+.noodle-ai-research-btn.disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+.noodle-research-label {
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* Researching... indicator shown during tool calls */
+.noodle-ai-researching {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin: 4px 0;
+  font-size: 12px;
+  color: #2563eb;
+  font-style: italic;
+}
+
+.noodle-ai-researching-icon {
+  animation: noodleResearchSpin 1.2s linear infinite;
+  display: flex;
+  align-items: center;
+}
+
+@keyframes noodleResearchSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Web citation superscripts */
+.noodle-ai-web-cite {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  font-weight: 500;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0 2px;
+  margin: 0 1px;
+  vertical-align: super;
+  line-height: 0;
+  transition: color 0.1s ease;
+  text-decoration: none;
+}
+
+.noodle-ai-web-cite:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.noodle-ai-web-cite-favicon {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  object-fit: contain;
+  vertical-align: middle;
+  display: inline-block;
+  position: relative;
+  top: 3px;
+}
+
+/* Web sources section */
+.noodle-ai-web-sources {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.noodle-ai-web-source-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s ease;
+  text-decoration: none;
+}
+
+.noodle-ai-web-source-item:hover {
+  background: #f0f0f0;
+}
+
+.noodle-ai-web-source-num {
+  font-size: 10px;
+  font-weight: 600;
+  color: #2563eb;
+  min-width: 14px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.noodle-ai-web-source-favicon {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.noodle-ai-web-source-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.noodle-ai-web-source-title {
+  font-size: 11px;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.noodle-ai-web-source-domain {
+  font-size: 10px;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Settings badge */
+.settings-badge-optional {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #888;
+  background: #f0f0f0;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  vertical-align: middle;
+}

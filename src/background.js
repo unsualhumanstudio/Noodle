@@ -49,6 +49,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleAiRequest(message, sender);
     return true;
   }
+
+  if (message.type === 'noodleAiResearchRequest') {
+    handleResearchRequest(message, sender);
+    return true;
+  }
 });
 
 // Handle AI API requests with streaming
@@ -146,6 +151,201 @@ async function handleAiRequest(message, sender) {
       error: err.message
     });
   }
+}
+
+// Handle research requests with tool use loop (Claude + Tavily)
+async function handleResearchRequest(message, sender) {
+  const { requestId, systemPrompt, messages } = message;
+  const tabId = sender.tab?.id;
+  if (!tabId) return;
+
+  const stored = await chrome.storage.local.get(['noodleApiKey', 'noodleTavilyKey']);
+  const apiKey = stored.noodleApiKey;
+  const tavilyKey = stored.noodleTavilyKey;
+
+  if (!apiKey) {
+    chrome.tabs.sendMessage(tabId, {
+      type: 'noodleAiStreamError', requestId,
+      error: 'No API key configured. Add your Claude API key in Settings.'
+    });
+    return;
+  }
+
+  if (!tavilyKey) {
+    chrome.tabs.sendMessage(tabId, {
+      type: 'noodleAiStreamError', requestId,
+      error: 'No Tavily API key configured. Add it in Settings to use research mode.'
+    });
+    return;
+  }
+
+  // Tool definition for Claude
+  const tools = [{
+    name: 'search_web',
+    description: 'Search the web for current information relevant to the user\'s question. Use this to find up-to-date facts, articles, or data that complement the user\'s saved snippets.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'A focused search query (under 200 chars). Be specific to get high-quality results.'
+        }
+      },
+      required: ['query']
+    }
+  }];
+
+  // Accumulated web citations: [{index, url, title, favicon}]
+  const webCitations = [];
+  let webCitIndex = 1;
+
+  // Mutable copy of messages for the tool use loop
+  let loopMessages = [...messages];
+  const MAX_TOOL_ROUNDS = 4; // safety cap
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    let response;
+    try {
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages: loopMessages,
+          tools,
+          // On the last round (or first if no tool use), stream the final answer
+          stream: false
+        })
+      });
+    } catch (err) {
+      chrome.tabs.sendMessage(tabId, { type: 'noodleAiStreamError', requestId, error: err.message });
+      return;
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      chrome.tabs.sendMessage(tabId, {
+        type: 'noodleAiStreamError', requestId,
+        error: `API error (${response.status}): ${errorText}`
+      });
+      return;
+    }
+
+    const data = await response.json();
+
+    // If Claude wants to use a tool
+    if (data.stop_reason === 'tool_use') {
+      // Append Claude's response (with tool_use content blocks) to loop messages
+      loopMessages.push({ role: 'assistant', content: data.content });
+
+      // Process each tool use block
+      const toolResults = [];
+      for (const block of data.content) {
+        if (block.type !== 'tool_use' || block.name !== 'search_web') continue;
+
+        const query = block.input?.query || '';
+
+        // Notify content script: "Researching..."
+        chrome.tabs.sendMessage(tabId, {
+          type: 'noodleAiToolCall',
+          requestId,
+          toolName: 'search_web',
+          query
+        });
+
+        // Call Tavily
+        let tavilyResults = [];
+        try {
+          const tavilyResp = await fetch('https://api.tavily.com/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              api_key: tavilyKey,
+              query,
+              search_depth: 'basic',
+              max_results: 5,
+              include_answer: false
+            })
+          });
+          if (tavilyResp.ok) {
+            const tavilyData = await tavilyResp.json();
+            tavilyResults = tavilyData.results || [];
+          }
+        } catch (e) {
+          // Tavily failed — continue with empty results
+          tavilyResults = [];
+        }
+
+        // Build tool result content for Claude + register web citations
+        let resultContent = '';
+        if (tavilyResults.length === 0) {
+          resultContent = 'No results found for this query.';
+        } else {
+          tavilyResults.forEach(r => {
+            const idx = webCitIndex++;
+            webCitations.push({ index: idx, url: r.url, title: r.title || r.url });
+            resultContent += `{W${idx}} ${r.title || r.url}\nURL: ${r.url}\nContent: ${(r.content || '').substring(0, 400)}\n\n`;
+          });
+        }
+
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: resultContent.trim()
+        });
+      }
+
+      // Append tool results and loop again
+      loopMessages.push({ role: 'user', content: toolResults });
+      continue; // next round — Claude will now synthesize
+    }
+
+    // stop_reason is 'end_turn' (or anything else) — stream the final answer
+    // Send accumulated web citations to the content script first
+    if (webCitations.length > 0) {
+      chrome.tabs.sendMessage(tabId, {
+        type: 'noodleAiWebCitations',
+        requestId,
+        citations: webCitations
+      });
+    }
+
+    // Now stream the final text content
+    // Re-request with stream:true to get the streaming response
+    // (We already have data.content for the non-streaming final answer — stream it manually)
+    chrome.tabs.sendMessage(tabId, { type: 'noodleAiStreamStart', requestId });
+
+    // Extract text blocks from the non-streamed response and send as deltas
+    for (const block of data.content) {
+      if (block.type === 'text' && block.text) {
+        // Send in chunks to simulate streaming feel
+        const chunkSize = 80;
+        for (let i = 0; i < block.text.length; i += chunkSize) {
+          chrome.tabs.sendMessage(tabId, {
+            type: 'noodleAiStreamDelta',
+            requestId,
+            text: block.text.slice(i, i + chunkSize)
+          });
+        }
+      }
+    }
+
+    chrome.tabs.sendMessage(tabId, { type: 'noodleAiStreamEnd', requestId });
+    return;
+  }
+
+  // Exhausted max tool rounds — send whatever we have
+  chrome.tabs.sendMessage(tabId, {
+    type: 'noodleAiStreamError', requestId,
+    error: 'Research exceeded maximum search rounds. Please try a more specific question.'
+  });
 }
 
 // Inject content script into a tab

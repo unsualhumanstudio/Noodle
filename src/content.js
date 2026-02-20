@@ -40,6 +40,9 @@
   let aiCurrentRequestId = null;
   let aiStreamBuffer = '';
   let aiHistoryOpen = false;
+  let aiResearchMode = false;    // whether research toggle is on
+  let aiHasTavilyKey = false;   // whether user has configured Tavily key
+  let aiWebCitations = [];       // [{index, url, title, favicon}] for current response
 
   // Initialize
   function init() {
@@ -878,18 +881,18 @@
 
   // Show settings dialog
   async function showSettingsDialog() {
-    // Check current all-sites permission status and API key
+    // Check current all-sites permission status and API keys
     let hasAllSites = false;
     let hasApiKey = false;
+    let hasTavilyKey = false;
     try {
       const response = await chrome.runtime.sendMessage({ type: 'checkAllSitesPermission' });
       hasAllSites = response?.hasPermission || false;
-    } catch (e) {
-      // Extension context may not be available
-    }
+    } catch (e) {}
     try {
-      const result = await new Promise(resolve => chrome.storage.local.get('noodleApiKey', resolve));
+      const result = await new Promise(resolve => chrome.storage.local.get(['noodleApiKey', 'noodleTavilyKey'], resolve));
       hasApiKey = !!result.noodleApiKey;
+      hasTavilyKey = !!result.noodleTavilyKey;
     } catch (e) {}
 
     const dialog = document.createElement('div');
@@ -907,7 +910,19 @@
             </button>
             ${hasApiKey ? '<button class="dialog-btn api-key-clear-btn" style="padding:8px 10px;font-size:12px;color:#e74c3c;">Clear</button>' : ''}
           </div>
-          <p class="settings-hint">Your API key is stored locally and used for AI features.</p>
+          <p class="settings-hint">Your Claude API key is stored locally and used for AI chat.</p>
+        </div>
+        <div class="settings-section">
+          <h4>Research (Tavily API) <span class="settings-badge-optional">optional</span></h4>
+          <div class="api-key-row" style="display:flex;gap:6px;align-items:center;">
+            <input type="password" class="dialog-input tavily-key-input" style="flex:1;font-size:12px;"
+                   placeholder="tvly-..." value="${hasTavilyKey ? '••••••••' : ''}" />
+            <button class="dialog-btn tavily-key-save-btn" style="padding:8px 12px;font-size:12px;">
+              ${hasTavilyKey ? 'Update' : 'Save'}
+            </button>
+            ${hasTavilyKey ? '<button class="dialog-btn tavily-key-clear-btn" style="padding:8px 10px;font-size:12px;color:#e74c3c;">Clear</button>' : ''}
+          </div>
+          <p class="settings-hint">Enables the research toggle in chat — lets Noodle search the web for you. Get a free key at <a href="https://tavily.com" target="_blank" style="color:#666;">tavily.com</a>.</p>
         </div>
         <div class="settings-section">
           <h4>Availability</h4>
@@ -996,6 +1011,28 @@
         const keyInput = dialog.querySelector('.api-key-input');
         if (keyInput) keyInput.value = '';
         dialog.querySelector('.api-key-clear-btn')?.remove();
+      });
+    });
+
+    // Tavily key save handler
+    dialog.querySelector('.tavily-key-save-btn')?.addEventListener('click', () => {
+      const keyInput = dialog.querySelector('.tavily-key-input');
+      const key = keyInput?.value.trim();
+      if (key && key !== '••••••••') {
+        chrome.storage.local.set({ noodleTavilyKey: key }, () => {
+          showToast('Tavily key saved');
+          keyInput.value = '••••••••';
+        });
+      }
+    });
+
+    // Tavily key clear handler
+    dialog.querySelector('.tavily-key-clear-btn')?.addEventListener('click', () => {
+      chrome.storage.local.remove('noodleTavilyKey', () => {
+        showToast('Tavily key removed');
+        const keyInput = dialog.querySelector('.tavily-key-input');
+        if (keyInput) keyInput.value = '';
+        dialog.querySelector('.tavily-key-clear-btn')?.remove();
       });
     });
 
@@ -1556,6 +1593,15 @@
         case 'noodleAiStreamError':
           handleStreamError(message.requestId, message.error);
           break;
+        case 'noodleAiToolCall':
+          handleToolCall(message.requestId, message.toolName, message.query);
+          break;
+        case 'noodleAiWebCitations':
+          // background sends back the final web citation list after research
+          if (message.requestId === aiCurrentRequestId) {
+            aiWebCitations = message.citations || [];
+          }
+          break;
       }
     });
   }
@@ -1564,9 +1610,11 @@
     if (!sidebar) return;
     closeContextMenu(); // dismiss floating menu if open
 
-    chrome.storage.local.get(['noodleChatHistory', 'noodleApiKey'], (result) => {
+    chrome.storage.local.get(['noodleChatHistory', 'noodleApiKey', 'noodleTavilyKey'], (result) => {
       aiChatHistory = result.noodleChatHistory || [];
       const hasApiKey = !!result.noodleApiKey;
+      aiHasTavilyKey = !!result.noodleTavilyKey;
+      if (!aiHasTavilyKey) aiResearchMode = false; // can't be on without key
       aiSelectedFolderIds = ['all'];
       aiHistoryOpen = false;
 
@@ -1619,6 +1667,9 @@
       `;
     }
 
+    // Globe SVG for research toggle
+    const globeSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`;
+
     const inputBoxHTML = (placeholder) => `
       <div class="noodle-ai-input-area">
         ${snippets.length > 0 ? buildContextChipsHTML() : ''}
@@ -1632,9 +1683,17 @@
                 </button>
               ` : ''}
             </div>
-            <button class="noodle-ai-send-btn" title="Send">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" d="M5.5 13L18 6m-1.75 17.5h.25a72.7 72.7 0 0 1 6.504-21.962L23.26 1L23 .74l-.538.256A72.7 72.7 0 0 1 .5 7.5v.25l5 5v7.75h.25l1.774-1.69a12 12 0 0 1 2.313-1.723z" stroke-width="1"/></svg>
-            </button>
+            <div class="noodle-ai-footer-right">
+              <button class="noodle-ai-research-btn ${aiResearchMode ? 'active' : ''} ${!aiHasTavilyKey ? 'disabled' : ''}"
+                title="${aiHasTavilyKey ? (aiResearchMode ? 'Research on (click to turn off)' : 'Research off (click to turn on)') : 'Add Tavily API key in Settings to enable research'}"
+                ${!aiHasTavilyKey ? 'disabled' : ''}>
+                ${globeSVG}
+                <span class="noodle-research-label">${aiResearchMode ? 'Research on' : 'Research'}</span>
+              </button>
+              <button class="noodle-ai-send-btn" title="Send">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" d="M5.5 13L18 6m-1.75 17.5h.25a72.7 72.7 0 0 1 6.504-21.962L23.26 1L23 .74l-.538.256A72.7 72.7 0 0 1 .5 7.5v.25l5 5v7.75h.25l1.774-1.69a12 12 0 0 1 2.313-1.723z" stroke-width="1"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1875,8 +1934,19 @@
 
     // Track which citation numbers are used in this response
     const usedCitations = new Set();
+    const usedWebCitations = new Set();
 
-    // Convert numbered citations [1], [2] etc. to superscript numbers
+    // Convert web citations {W1}, {W2} etc. to superscript links
+    html = html.replace(/\{W(\d+)\}/g, (match, num) => {
+      const citNum = parseInt(num);
+      const webCit = aiWebCitations.find(c => c.index === citNum);
+      if (!webCit) return match;
+      usedWebCitations.add(citNum);
+      const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(webCit.url).hostname)}&sz=16`;
+      return `<a class="noodle-ai-web-cite" href="${escapeHtml(webCit.url)}" target="_blank" rel="noopener" data-web-cite-num="${citNum}" title="${escapeHtml(webCit.title || webCit.url)}"><img class="noodle-ai-web-cite-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">W${citNum}</a>`;
+    });
+
+    // Convert snippet citations [1], [2] etc. to superscript numbers
     html = html.replace(/\[(\d+)\]/g, (match, num) => {
       const citNum = parseInt(num);
       const citation = aiCitationMap.find(c => c.index === citNum);
@@ -1914,7 +1984,7 @@
       return `<p>${p.replace(/\n/g, '<br>')}</p>`;
     }).join('');
 
-    // Build Sources footer if any citations were used
+    // Build snippet Sources footer
     if (usedCitations.size > 0) {
       const sortedCitations = Array.from(usedCitations).sort((a, b) => a - b);
       const sourcesHTML = sortedCitations.map(citNum => {
@@ -1936,8 +2006,37 @@
 
       html += `
         <div class="noodle-ai-sources">
-          <div class="noodle-ai-sources-title">Sources</div>
+          <div class="noodle-ai-sources-title">Snippets</div>
           ${sourcesHTML}
+        </div>
+      `;
+    }
+
+    // Build web sources footer
+    if (usedWebCitations.size > 0) {
+      const sortedWeb = Array.from(usedWebCitations).sort((a, b) => a - b);
+      const webSourcesHTML = sortedWeb.map(citNum => {
+        const webCit = aiWebCitations.find(c => c.index === citNum);
+        if (!webCit) return '';
+        let hostname = '';
+        try { hostname = new URL(webCit.url).hostname.replace(/^www\./, ''); } catch(e) { hostname = webCit.url; }
+        const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=28`;
+        return `
+          <a class="noodle-ai-web-source-item" href="${escapeHtml(webCit.url)}" target="_blank" rel="noopener">
+            <span class="noodle-ai-web-source-num">W${citNum}</span>
+            <img class="noodle-ai-web-source-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">
+            <span class="noodle-ai-web-source-info">
+              <span class="noodle-ai-web-source-title">${escapeHtml(webCit.title || hostname)}</span>
+              <span class="noodle-ai-web-source-domain">${escapeHtml(hostname)}</span>
+            </span>
+          </a>
+        `;
+      }).join('');
+
+      html += `
+        <div class="noodle-ai-web-sources">
+          <div class="noodle-ai-sources-title">Web sources</div>
+          ${webSourcesHTML}
         </div>
       `;
     }
@@ -2010,6 +2109,19 @@
 
     // Context: + button opens/closes the dropdown menu
     attachContextListeners();
+
+    // Research toggle
+    root.querySelector('.noodle-ai-research-btn')?.addEventListener('click', () => {
+      if (!aiHasTavilyKey) return;
+      aiResearchMode = !aiResearchMode;
+      const btn = root.querySelector('.noodle-ai-research-btn');
+      if (btn) {
+        btn.classList.toggle('active', aiResearchMode);
+        const label = btn.querySelector('.noodle-research-label');
+        if (label) label.textContent = aiResearchMode ? 'Research on' : 'Research';
+        btn.title = aiResearchMode ? 'Research on (click to turn off)' : 'Research off (click to turn on)';
+      }
+    });
 
     // New chat button
     root.querySelector('.noodle-ai-new-chat-btn')?.addEventListener('click', () => {
@@ -2259,6 +2371,12 @@ When referencing snippets, place ONLY the bare citation marker [1], [2], [3] etc
 
 Keep responses concise and well-structured. Use markdown-style formatting: **bold** for emphasis, bullet lists with - prefix, numbered lists with 1. prefix. Write flowing prose — never paste, quote, or repeat snippet text inline.`;
 
+    if (aiResearchMode) {
+      basePrompt += `
+
+You also have access to a web search tool. Use it proactively to find current, relevant information that complements the user's saved snippets. When you use web search results, cite them with {W1}, {W2}, {W3} markers (W for web) — these are distinct from snippet [1] [2] citations. Place web citation markers inline at the end of sentences that use web-sourced information. Do not mix [snippet] and {web} markers; use them independently. You may combine both in a response when relevant.`;
+    }
+
     if (command) {
       const commandPrompts = {
         '/summarize': 'Provide a clear, structured summary of the provided snippets. Group related ideas and highlight key themes.',
@@ -2326,6 +2444,7 @@ Keep responses concise and well-structured. Use markdown-style formatting: **bol
     aiIsStreaming = true;
     aiStreamBuffer = '';
     aiCurrentRequestId = Date.now().toString();
+    aiWebCitations = [];
 
     const systemPrompt = buildSystemPrompt(command);
     const messages = buildContextMessages(chat, command);
@@ -2346,7 +2465,7 @@ Keep responses concise and well-structured. Use markdown-style formatting: **bol
     if (sendBtn) sendBtn.disabled = true;
 
     chrome.runtime.sendMessage({
-      type: 'noodleAiRequest',
+      type: aiResearchMode ? 'noodleAiResearchRequest' : 'noodleAiRequest',
       requestId: aiCurrentRequestId,
       systemPrompt,
       messages
@@ -2356,8 +2475,12 @@ Keep responses concise and well-structured. Use markdown-style formatting: **bol
   function handleStreamStart(requestId) {
     if (requestId !== aiCurrentRequestId) return;
 
-    const indicator = document.getElementById('noodle-typing-indicator');
-    if (indicator) indicator.remove();
+    // Remove typing / researching indicators
+    document.getElementById('noodle-typing-indicator')?.remove();
+    document.getElementById('noodle-researching-indicator')?.remove();
+
+    // Note: aiWebCitations may have already been populated by noodleAiWebCitations message
+    // (sent just before noodleAiStreamStart in research mode) — do NOT reset here.
 
     const messagesEl = sidebar?.querySelector('.noodle-ai-messages');
     if (messagesEl) {
@@ -2438,6 +2561,29 @@ Keep responses concise and well-structured. Use markdown-style formatting: **bol
 
     const sendBtn = sidebar?.querySelector('.noodle-ai-send-btn');
     if (sendBtn) sendBtn.disabled = false;
+  }
+
+  function handleToolCall(requestId, toolName, query) {
+    if (requestId !== aiCurrentRequestId) return;
+
+    // Remove typing indicator if present, replace with researching indicator
+    const indicator = document.getElementById('noodle-typing-indicator');
+    if (indicator) indicator.remove();
+
+    const existing = document.getElementById('noodle-researching-indicator');
+    if (existing) return; // already showing
+
+    const messagesEl = sidebar?.querySelector('.noodle-ai-messages');
+    if (messagesEl) {
+      const spinSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`;
+      messagesEl.insertAdjacentHTML('beforeend', `
+        <div class="noodle-ai-researching" id="noodle-researching-indicator">
+          <span class="noodle-ai-researching-icon">${spinSVG}</span>
+          <span>Searching: ${escapeHtml(query || 'web')}…</span>
+        </div>
+      `);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
   }
 
   function saveChatHistory() {
