@@ -1726,7 +1726,7 @@
             ).join('')}
           </div>
         </div>
-        ${inputBoxHTML('Ask about your snippets...')}
+        ${inputBoxHTML('/command or ask about your snippets...')}
       </div>
     `;
   }
