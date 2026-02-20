@@ -1084,10 +1084,11 @@
 
 /* Claude-style input box */
 .noodle-ai-input-box {
-  background: white;
-  border: 1px solid #d4d4d4;
-  border-radius: 14px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  background: white !important;
+  border: 1px solid #d4d4d4 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07) !important;
+  outline: none !important;
   display: flex;
   flex-direction: column;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -1095,9 +1096,9 @@
 }
 
 .noodle-ai-input-box:focus-within {
-  border-color: #d4d4d4;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-  outline: none;
+  border-color: #d4d4d4 !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07) !important;
+  outline: none !important;
 }
 
 .noodle-ai-input {
