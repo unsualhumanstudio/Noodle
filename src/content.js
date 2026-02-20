@@ -1554,20 +1554,16 @@
   // ===== AI Command Bar =====
 
   const AI_COMMANDS = [
-    { name: '/market',     desc: 'Research market trends, news & opportunities', requiresResearch: true },
-    { name: '/research',   desc: 'Find top research articles & identify gaps',   requiresResearch: true },
-    { name: '/summarize',  desc: 'Summarize selected snippets' },
-    { name: '/analyze',    desc: 'Deep dive into a snippet or topic' },
-    { name: '/compare',    desc: 'Compare selected snippets' },
-    { name: '/patterns',   desc: 'Find recurring themes' },
-    { name: '/tags',       desc: 'Suggest tags for snippets' },
-    { name: '/questions',  desc: 'Generate research questions' },
-    { name: '/export',     desc: 'Export analysis as markdown' },
-    { name: '/outline',    desc: 'Create outline from snippets' },
-    { name: '/gaps',       desc: 'Identify missing research areas' },
-    { name: '/connect',    desc: 'Find non-obvious connections' },
-    { name: '/actionable', desc: 'Turn insights into action items' },
-    { name: '/cite',       desc: 'Format snippets as citations' }
+    {
+      name: '/market',
+      desc: 'Search market reports, recent news, trends, social activity & competitor landscape to compile a structured market research report.',
+      requiresResearch: true
+    },
+    {
+      name: '/research',
+      desc: 'Find the top 10 most cited research articles and identify gaps in the literature — cross-referenced against your saved snippets.',
+      requiresResearch: true
+    }
   ];
 
   function setupAiShortcut() {
@@ -1674,9 +1670,7 @@
 
     const inputBoxHTML = (placeholder) => `
       <div class="noodle-ai-input-section">
-        <div class="noodle-ai-commands-wrap">
-          ${buildCommandsHTML(AI_COMMANDS.slice(0, 4), false)}
-        </div>
+        <div class="noodle-ai-commands-wrap" style="display:none;"></div>
         <div class="noodle-ai-input-area">
           ${snippets.length > 0 ? buildContextChipsHTML() : ''}
           <div class="noodle-ai-input-box">
@@ -1882,49 +1876,18 @@
     `;
   }
 
-  function buildCommandsListHTML() {
-    // Show a few suggestions at empty state — just the research ones + first 2 snippet ones
-    const preview = AI_COMMANDS.slice(0, 4);
-    return buildCommandsHTML(preview, false);
-  }
+  function buildCommandsHTML(cmds) {
+    const globeIcon = `<svg class="noodle-cmd-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`;
 
-  function buildCommandsHTML(cmds, isFiltering) {
-    const researchCmds = cmds.filter(c => c.requiresResearch);
-    const snippetCmds  = cmds.filter(c => !c.requiresResearch);
-
-    const renderCmd = (cmd) => {
-      const globeIcon = cmd.requiresResearch
-        ? `<svg class="noodle-cmd-icon" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`
-        : `<svg class="noodle-cmd-icon" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>`;
-      return `
-        <div class="noodle-ai-command-item" data-command="${cmd.name}">
-          ${globeIcon}
+    return cmds.map(cmd => `
+      <div class="noodle-ai-command-item" data-command="${cmd.name}">
+        ${globeIcon}
+        <div class="noodle-ai-command-text">
           <span class="noodle-ai-command-name">${cmd.name}</span>
           <span class="noodle-ai-command-desc">${cmd.desc}</span>
         </div>
-      `;
-    };
-
-    let inner = '';
-
-    if (researchCmds.length > 0) {
-      inner += `<div class="noodle-ai-commands-group-title">Web research</div>`;
-      inner += researchCmds.map(renderCmd).join('');
-    }
-
-    if (snippetCmds.length > 0) {
-      if (researchCmds.length > 0) inner += `<div class="noodle-ai-commands-divider"></div>`;
-      if (!isFiltering || researchCmds.length > 0) {
-        inner += `<div class="noodle-ai-commands-group-title">Snippets</div>`;
-      }
-      inner += snippetCmds.map(renderCmd).join('');
-    }
-
-    if (!isFiltering) {
-      inner += `<div class="noodle-ai-commands-hint">Type / to filter commands</div>`;
-    }
-
-    return inner;
+      </div>
+    `).join('');
   }
 
   function buildHistorySidebarHTML() {
@@ -2654,31 +2617,24 @@ You also have access to a web search tool. Use it proactively to find current, r
     if (!commandsContainer) return;
 
     if (text.startsWith('/')) {
-      const partial = text.toLowerCase();
-      // If they've typed the full command name already, hide (they've selected it)
-      const exactMatch = AI_COMMANDS.find(cmd => cmd.name === partial.trimEnd());
-      if (exactMatch && text.endsWith(' ')) {
+      const partial = text.toLowerCase().trimEnd();
+
+      // Hide once they've typed a complete command followed by a space
+      if (text.endsWith(' ') && AI_COMMANDS.find(cmd => cmd.name === partial)) {
         commandsContainer.style.display = 'none';
         return;
       }
 
       const matching = AI_COMMANDS.filter(cmd => cmd.name.startsWith(partial));
       if (matching.length > 0) {
+        commandsContainer.innerHTML = buildCommandsHTML(matching);
         commandsContainer.style.display = '';
-        commandsContainer.innerHTML = buildCommandsHTML(matching, true);
         attachCommandItemListeners(inputEl, commandsContainer);
       } else {
         commandsContainer.style.display = 'none';
       }
     } else {
-      // Show default list when input is empty
-      if (text.length === 0) {
-        commandsContainer.style.display = '';
-        commandsContainer.innerHTML = buildCommandsHTML(AI_COMMANDS.slice(0, 4), false);
-        attachCommandItemListeners(inputEl, commandsContainer);
-      } else {
-        commandsContainer.style.display = 'none';
-      }
+      commandsContainer.style.display = 'none';
     }
   }
 
@@ -2687,7 +2643,6 @@ You also have access to a web search tool. Use it proactively to find current, r
       item.addEventListener('click', () => {
         inputEl.value = item.dataset.command + ' ';
         inputEl.focus();
-        // Hide picker after selection
         container.style.display = 'none';
       });
     });
