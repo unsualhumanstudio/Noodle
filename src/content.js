@@ -1921,8 +1921,8 @@
       `;
     }
 
-    // Pass persisted webCitations (if any) so history renders correctly
-    const rendered = renderAiContent(message.content, message.webCitations || null);
+    // Pass persisted citations (if any) so history renders correctly
+    const rendered = renderAiContent(message.content, message.webCitations || null, message.citationMap || null);
     return `
       <div class="noodle-ai-message assistant">
         ${rendered}
@@ -1930,11 +1930,12 @@
     `;
   }
 
-  function renderAiContent(text, webCitsOverride) {
+  function renderAiContent(text, webCitsOverride, citationMapOverride) {
     let html = escapeHtml(text);
 
-    // Use persisted citations when rendering history, or live aiWebCitations during streaming
+    // Use persisted citations when rendering history, or live globals during streaming
     const resolvedWebCits = webCitsOverride || aiWebCitations;
+    const resolvedCitationMap = citationMapOverride || aiCitationMap;
 
     // Track which citation numbers are used in this response
     const usedCitations = new Set();
@@ -1953,7 +1954,7 @@
     // Convert snippet citations [1], [2] etc. to superscript numbers
     html = html.replace(/\[(\d+)\]/g, (match, num) => {
       const citNum = parseInt(num);
-      const citation = aiCitationMap.find(c => c.index === citNum);
+      const citation = resolvedCitationMap.find(c => c.index === citNum);
       if (!citation) return match;
       const snippet = snippets.find(s => s.id === citation.id);
       if (!snippet) return match;
@@ -1992,7 +1993,7 @@
     if (usedCitations.size > 0) {
       const sortedCitations = Array.from(usedCitations).sort((a, b) => a - b);
       const sourcesHTML = sortedCitations.map(citNum => {
-        const citation = aiCitationMap.find(c => c.index === citNum);
+        const citation = resolvedCitationMap.find(c => c.index === citNum);
         if (!citation) return '';
         const snippet = snippets.find(s => s.id === citation.id);
         if (!snippet) return '';
@@ -2522,7 +2523,10 @@ You also have access to a web search tool. Use it proactively to find current, r
         timestamp: new Date().toISOString(),
         command: null
       };
-      // Persist web citations so they survive page navigation / history re-opens
+      // Persist citations so they survive page navigation / history re-opens
+      if (aiCitationMap.length > 0) {
+        msg.citationMap = [...aiCitationMap];
+      }
       if (aiWebCitations.length > 0) {
         msg.webCitations = [...aiWebCitations];
       }
