@@ -1335,45 +1335,84 @@
 }
 
 /* Slash commands list */
-.noodle-ai-commands {
-  padding: 8px 16px 12px;
-  border-bottom: 1px solid #e5e5e5;
+/* Input section: command picker + input box stacked */
+.noodle-ai-input-section {
+  display: flex;
+  flex-direction: column;
   flex-shrink: 0;
 }
 
-.noodle-ai-commands-title {
+/* Command picker — sits above input, hidden by default */
+.noodle-ai-commands-wrap {
+  background: white;
+  border-top: 1px solid #ebebeb;
+  border-bottom: 1px solid #ebebeb;
+  overflow: hidden;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.noodle-ai-commands-group-title {
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
-  color: #888;
-  margin-bottom: 6px;
+  letter-spacing: 0.4px;
+  color: #aaa;
+  padding: 8px 12px 4px;
+}
+
+.noodle-ai-commands-divider {
+  height: 1px;
+  background: #f0f0f0;
+  margin: 4px 0;
+}
+
+.noodle-ai-commands-hint {
+  font-size: 11px;
+  color: #bbb;
+  padding: 6px 12px 8px;
+  font-style: italic;
 }
 
 .noodle-ai-command-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 7px 12px;
   cursor: pointer;
   transition: background 0.1s ease;
 }
 
 .noodle-ai-command-item:hover {
-  background: #f5f5f5;
+  background: #f7f7f7;
+}
+
+.noodle-cmd-icon {
+  color: #bbb;
+  flex-shrink: 0;
+  position: relative;
+  top: 0;
+}
+
+.noodle-ai-command-item:hover .noodle-cmd-icon {
+  color: #888;
 }
 
 .noodle-ai-command-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: #333;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #222;
   font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  flex-shrink: 0;
+  min-width: 100px;
 }
 
 .noodle-ai-command-desc {
   font-size: 12px;
-  color: #888;
+  color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Context picker — see .noodle-ai-context-add-btn / .noodle-ai-context-chip / .noodle-ai-context-menu in input box footer styles above */

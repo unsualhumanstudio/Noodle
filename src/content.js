@@ -1554,18 +1554,20 @@
   // ===== AI Command Bar =====
 
   const AI_COMMANDS = [
-    { name: '/summarize', desc: 'Summarize selected snippets' },
-    { name: '/analyze', desc: 'Deep dive into a snippet' },
-    { name: '/compare', desc: 'Compare selected snippets' },
-    { name: '/patterns', desc: 'Find recurring themes' },
-    { name: '/tags', desc: 'Suggest tags for snippets' },
-    { name: '/questions', desc: 'Generate research questions' },
-    { name: '/export', desc: 'Export analysis as markdown' },
-    { name: '/outline', desc: 'Create outline from snippets' },
-    { name: '/gaps', desc: 'Identify missing research areas' },
-    { name: '/connect', desc: 'Find non-obvious connections' },
+    { name: '/market',     desc: 'Research market trends, news & opportunities', requiresResearch: true },
+    { name: '/research',   desc: 'Find top research articles & identify gaps',   requiresResearch: true },
+    { name: '/summarize',  desc: 'Summarize selected snippets' },
+    { name: '/analyze',    desc: 'Deep dive into a snippet or topic' },
+    { name: '/compare',    desc: 'Compare selected snippets' },
+    { name: '/patterns',   desc: 'Find recurring themes' },
+    { name: '/tags',       desc: 'Suggest tags for snippets' },
+    { name: '/questions',  desc: 'Generate research questions' },
+    { name: '/export',     desc: 'Export analysis as markdown' },
+    { name: '/outline',    desc: 'Create outline from snippets' },
+    { name: '/gaps',       desc: 'Identify missing research areas' },
+    { name: '/connect',    desc: 'Find non-obvious connections' },
     { name: '/actionable', desc: 'Turn insights into action items' },
-    { name: '/cite', desc: 'Format snippets as citations' }
+    { name: '/cite',       desc: 'Format snippets as citations' }
   ];
 
   function setupAiShortcut() {
@@ -1671,28 +1673,33 @@
     const globeSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`;
 
     const inputBoxHTML = (placeholder) => `
-      <div class="noodle-ai-input-area">
-        ${snippets.length > 0 ? buildContextChipsHTML() : ''}
-        <div class="noodle-ai-input-box">
-          <textarea class="noodle-ai-input" placeholder="${placeholder}" rows="1"></textarea>
-          <div class="noodle-ai-input-box-footer">
-            <div class="noodle-ai-footer-left">
-              ${snippets.length > 0 ? `
-                <button class="noodle-ai-context-add-btn" title="Add context" aria-label="Add snippet context">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+      <div class="noodle-ai-input-section">
+        <div class="noodle-ai-commands-wrap">
+          ${buildCommandsHTML(AI_COMMANDS.slice(0, 4), false)}
+        </div>
+        <div class="noodle-ai-input-area">
+          ${snippets.length > 0 ? buildContextChipsHTML() : ''}
+          <div class="noodle-ai-input-box">
+            <textarea class="noodle-ai-input" placeholder="${placeholder}" rows="1"></textarea>
+            <div class="noodle-ai-input-box-footer">
+              <div class="noodle-ai-footer-left">
+                ${snippets.length > 0 ? `
+                  <button class="noodle-ai-context-add-btn" title="Add context" aria-label="Add snippet context">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                  </button>
+                ` : ''}
+              </div>
+              <div class="noodle-ai-footer-right">
+                <button class="noodle-ai-research-btn ${aiResearchMode ? 'active' : ''} ${!aiHasTavilyKey ? 'disabled' : ''}"
+                  title="${aiHasTavilyKey ? (aiResearchMode ? 'Research on (click to turn off)' : 'Research off (click to turn on)') : 'Add Tavily API key in Settings to enable research'}"
+                  ${!aiHasTavilyKey ? 'disabled' : ''}>
+                  ${globeSVG}
+                  <span class="noodle-research-label">${aiResearchMode ? 'Research on' : 'Research'}</span>
                 </button>
-              ` : ''}
-            </div>
-            <div class="noodle-ai-footer-right">
-              <button class="noodle-ai-research-btn ${aiResearchMode ? 'active' : ''} ${!aiHasTavilyKey ? 'disabled' : ''}"
-                title="${aiHasTavilyKey ? (aiResearchMode ? 'Research on (click to turn off)' : 'Research off (click to turn on)') : 'Add Tavily API key in Settings to enable research'}"
-                ${!aiHasTavilyKey ? 'disabled' : ''}>
-                ${globeSVG}
-                <span class="noodle-research-label">${aiResearchMode ? 'Research on' : 'Research'}</span>
-              </button>
-              <button class="noodle-ai-send-btn" title="Send">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" d="M5.5 13L18 6m-1.75 17.5h.25a72.7 72.7 0 0 1 6.504-21.962L23.26 1L23 .74l-.538.256A72.7 72.7 0 0 1 .5 7.5v.25l5 5v7.75h.25l1.774-1.69a12 12 0 0 1 2.313-1.723z" stroke-width="1"/></svg>
-              </button>
+                <button class="noodle-ai-send-btn" title="Send">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" d="M5.5 13L18 6m-1.75 17.5h.25a72.7 72.7 0 0 1 6.504-21.962L23.26 1L23 .74l-.538.256A72.7 72.7 0 0 1 .5 7.5v.25l5 5v7.75h.25l1.774-1.69a12 12 0 0 1 2.313-1.723z" stroke-width="1"/></svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1876,20 +1883,48 @@
   }
 
   function buildCommandsListHTML() {
-    return `
-      <div class="noodle-ai-commands">
-        <div class="noodle-ai-commands-title">Commands</div>
-        ${AI_COMMANDS.slice(0, 4).map(cmd => `
-          <div class="noodle-ai-command-item" data-command="${cmd.name}">
-            <span class="noodle-ai-command-name">${cmd.name}</span>
-            <span class="noodle-ai-command-desc">${cmd.desc}</span>
-          </div>
-        `).join('')}
-        <button class="noodle-ai-show-all-commands noodle-ai-chip" style="margin-top:4px;">
-          Show all commands
-        </button>
-      </div>
-    `;
+    // Show a few suggestions at empty state — just the research ones + first 2 snippet ones
+    const preview = AI_COMMANDS.slice(0, 4);
+    return buildCommandsHTML(preview, false);
+  }
+
+  function buildCommandsHTML(cmds, isFiltering) {
+    const researchCmds = cmds.filter(c => c.requiresResearch);
+    const snippetCmds  = cmds.filter(c => !c.requiresResearch);
+
+    const renderCmd = (cmd) => {
+      const globeIcon = cmd.requiresResearch
+        ? `<svg class="noodle-cmd-icon" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`
+        : `<svg class="noodle-cmd-icon" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+      return `
+        <div class="noodle-ai-command-item" data-command="${cmd.name}">
+          ${globeIcon}
+          <span class="noodle-ai-command-name">${cmd.name}</span>
+          <span class="noodle-ai-command-desc">${cmd.desc}</span>
+        </div>
+      `;
+    };
+
+    let inner = '';
+
+    if (researchCmds.length > 0) {
+      inner += `<div class="noodle-ai-commands-group-title">Web research</div>`;
+      inner += researchCmds.map(renderCmd).join('');
+    }
+
+    if (snippetCmds.length > 0) {
+      if (researchCmds.length > 0) inner += `<div class="noodle-ai-commands-divider"></div>`;
+      if (!isFiltering || researchCmds.length > 0) {
+        inner += `<div class="noodle-ai-commands-group-title">Snippets</div>`;
+      }
+      inner += snippetCmds.map(renderCmd).join('');
+    }
+
+    if (!isFiltering) {
+      inner += `<div class="noodle-ai-commands-hint">Type / to filter commands</div>`;
+    }
+
+    return inner;
   }
 
   function buildHistorySidebarHTML() {
@@ -2395,7 +2430,9 @@ You also have access to a web search tool. Use it proactively to find current, r
         '/gaps': 'Analyze the provided snippets and identify potential gaps in the research. What topics are missing or underexplored?',
         '/connect': 'Find non-obvious connections between the provided snippets. Look for shared concepts, complementary ideas, or hidden relationships.',
         '/actionable': 'Transform the insights from these snippets into concrete action items. Be specific and practical.',
-        '/cite': 'Format each snippet as a proper citation, including the source URL and relevant context.'
+        '/cite': 'Format each snippet as a proper citation, including the source URL and relevant context.',
+        '/market': `You are conducting a comprehensive market research report. Use the search_web tool multiple times to gather current data across these dimensions: market size & growth trends, recent news and industry developments, competitor landscape, consumer sentiment and social media activity, and recent analyst or press coverage. Draw on the user's snippets for additional context where relevant. Structure your final report with clear sections: Market Overview, Key Trends, Competitive Landscape, Consumer Sentiment, and Opportunities & Risks. Cite all web sources with {W1} {W2} markers and snippet sources with [1] [2] markers.`,
+        '/research': `You are conducting an academic literature review. Use the search_web tool to search Google Scholar, PubMed, arXiv, SSRN, and other research libraries for the most cited and most recent articles relevant to the user's topic. Aim to identify: the top 10 most important papers the user should be aware of, the dominant schools of thought or methodologies, active debates and unresolved questions, and gaps in the literature — especially where the user's own saved snippets or project context might contribute. Structure your output as: Research Landscape, Key Papers (numbered list with brief annotations), Open Debates, and Research Gaps & Opportunities. Cite all web sources with {W1} {W2} markers.`
       };
 
       basePrompt += '\n\n' + (commandPrompts[command.name] || '');
@@ -2469,8 +2506,13 @@ You also have access to a web search tool. Use it proactively to find current, r
     const sendBtn = sidebar?.querySelector('.noodle-ai-send-btn');
     if (sendBtn) sendBtn.disabled = true;
 
+    // Commands with requiresResearch always use the research path (Tavily),
+    // regardless of whether the research toggle is currently on
+    const commandDef = command ? AI_COMMANDS.find(c => c.name === command.name) : null;
+    const useResearch = aiResearchMode || (commandDef?.requiresResearch && aiHasTavilyKey);
+
     chrome.runtime.sendMessage({
-      type: aiResearchMode ? 'noodleAiResearchRequest' : 'noodleAiRequest',
+      type: useResearch ? 'noodleAiResearchRequest' : 'noodleAiRequest',
       requestId: aiCurrentRequestId,
       systemPrompt,
       messages
@@ -2608,36 +2650,47 @@ You also have access to a web search tool. Use it proactively to find current, r
 
   function handleAiInputChange(inputEl) {
     const text = inputEl.value;
-    const commandsEl = sidebar?.querySelector('.noodle-ai-commands');
-    if (!commandsEl) return;
+    const commandsContainer = sidebar?.querySelector('.noodle-ai-commands-wrap');
+    if (!commandsContainer) return;
 
     if (text.startsWith('/')) {
       const partial = text.toLowerCase();
-      const matching = AI_COMMANDS.filter(cmd => cmd.name.startsWith(partial));
+      // If they've typed the full command name already, hide (they've selected it)
+      const exactMatch = AI_COMMANDS.find(cmd => cmd.name === partial.trimEnd());
+      if (exactMatch && text.endsWith(' ')) {
+        commandsContainer.style.display = 'none';
+        return;
+      }
 
-      if (matching.length > 0 && text !== matching[0].name) {
-        commandsEl.style.display = '';
-        commandsEl.innerHTML = `
-          <div class="noodle-ai-commands-title">Commands</div>
-          ${matching.map(cmd => `
-            <div class="noodle-ai-command-item" data-command="${cmd.name}">
-              <span class="noodle-ai-command-name">${cmd.name}</span>
-              <span class="noodle-ai-command-desc">${cmd.desc}</span>
-            </div>
-          `).join('')}
-        `;
-        commandsEl.querySelectorAll('.noodle-ai-command-item').forEach(item => {
-          item.addEventListener('click', () => {
-            inputEl.value = item.dataset.command + ' ';
-            inputEl.focus();
-          });
-        });
+      const matching = AI_COMMANDS.filter(cmd => cmd.name.startsWith(partial));
+      if (matching.length > 0) {
+        commandsContainer.style.display = '';
+        commandsContainer.innerHTML = buildCommandsHTML(matching, true);
+        attachCommandItemListeners(inputEl, commandsContainer);
       } else {
-        commandsEl.style.display = 'none';
+        commandsContainer.style.display = 'none';
       }
     } else {
-      commandsEl.style.display = text.length === 0 ? '' : 'none';
+      // Show default list when input is empty
+      if (text.length === 0) {
+        commandsContainer.style.display = '';
+        commandsContainer.innerHTML = buildCommandsHTML(AI_COMMANDS.slice(0, 4), false);
+        attachCommandItemListeners(inputEl, commandsContainer);
+      } else {
+        commandsContainer.style.display = 'none';
+      }
     }
+  }
+
+  function attachCommandItemListeners(inputEl, container) {
+    container.querySelectorAll('.noodle-ai-command-item').forEach(item => {
+      item.addEventListener('click', () => {
+        inputEl.value = item.dataset.command + ' ';
+        inputEl.focus();
+        // Hide picker after selection
+        container.style.display = 'none';
+      });
+    });
   }
 
   // Start the extension
