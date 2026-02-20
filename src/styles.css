@@ -1097,6 +1097,7 @@
 .noodle-ai-input-box:focus-within {
   border-color: #d4d4d4;
   box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  outline: none;
 }
 
 .noodle-ai-input {
@@ -1108,7 +1109,8 @@
   font-family: inherit;
   color: #1a1a1a;
   resize: none;
-  outline: none;
+  outline: 0 !important;
+  -webkit-appearance: none;
   line-height: 1.5;
   min-height: 44px;
   max-height: 160px;
