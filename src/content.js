@@ -1674,6 +1674,7 @@
         <div class="noodle-ai-input-area">
           ${snippets.length > 0 ? buildContextChipsHTML() : ''}
           <div class="noodle-ai-input-box">
+            <div class="noodle-ai-cmd-chip-row"></div>
             <textarea class="noodle-ai-input" placeholder="${placeholder}" rows="1"></textarea>
             <div class="noodle-ai-input-box-footer">
               <div class="noodle-ai-footer-left">
@@ -2316,8 +2317,15 @@
   function handleAiSubmit(inputEl) {
     if (!inputEl || aiIsStreaming) return;
 
-    const text = inputEl.value.trim();
-    if (!text) return;
+    // If a command chip is active, prepend it to form the full text for parsing
+    const chipRow = inputEl.closest('.noodle-ai-input-box')?.querySelector('.noodle-ai-cmd-chip-row');
+    const activeChip = chipRow?.querySelector('.noodle-ai-active-cmd-chip');
+    const chipCmd = activeChip?.dataset.command || '';
+
+    const rawText = inputEl.value.trim();
+    if (!chipCmd && !rawText) return;
+
+    const text = chipCmd ? (chipCmd + ' ' + rawText).trim() : rawText;
 
     const command = parseAiCommand(text);
 
@@ -2611,17 +2619,52 @@ You also have access to a web search tool. Use it proactively to find current, r
     });
   }
 
+  function promoteCommandToChip(inputEl, cmdName) {
+    // Strip the command + leading space from the textarea, move it to the chip row
+    const remaining = inputEl.value.replace(/^\/\w+\s*/, '');
+    inputEl.value = remaining;
+
+    const chipRow = inputEl.closest('.noodle-ai-input-box')?.querySelector('.noodle-ai-cmd-chip-row');
+    if (!chipRow) return;
+
+    chipRow.innerHTML = `
+      <span class="noodle-ai-active-cmd-chip" data-command="${cmdName}">
+        ${cmdName}
+        <button class="noodle-ai-active-cmd-remove" title="Remove command">&times;</button>
+      </span>
+    `;
+
+    chipRow.querySelector('.noodle-ai-active-cmd-remove')?.addEventListener('click', () => {
+      chipRow.innerHTML = '';
+      inputEl.value = cmdName + ' ' + inputEl.value;
+      inputEl.focus();
+      // Trigger input event so picker re-shows
+      inputEl.dispatchEvent(new Event('input'));
+    });
+
+    inputEl.focus();
+  }
+
   function handleAiInputChange(inputEl) {
     const text = inputEl.value;
     const commandsContainer = sidebar?.querySelector('.noodle-ai-commands-wrap');
     if (!commandsContainer) return;
 
+    // If a chip is already set, don't reopen the command picker
+    const chipRow = inputEl.closest('.noodle-ai-input-box')?.querySelector('.noodle-ai-cmd-chip-row');
+    if (chipRow?.querySelector('.noodle-ai-active-cmd-chip')) {
+      commandsContainer.style.display = 'none';
+      return;
+    }
+
     if (text.startsWith('/')) {
       const partial = text.toLowerCase().trimEnd();
 
-      // Hide once they've typed a complete command followed by a space
-      if (text.endsWith(' ') && AI_COMMANDS.find(cmd => cmd.name === partial)) {
+      // Promote to chip when full command + space is typed
+      const exactCmd = AI_COMMANDS.find(cmd => cmd.name === partial);
+      if (exactCmd && text.endsWith(' ')) {
         commandsContainer.style.display = 'none';
+        promoteCommandToChip(inputEl, exactCmd.name);
         return;
       }
 
@@ -2641,9 +2684,8 @@ You also have access to a web search tool. Use it proactively to find current, r
   function attachCommandItemListeners(inputEl, container) {
     container.querySelectorAll('.noodle-ai-command-item').forEach(item => {
       item.addEventListener('click', () => {
-        inputEl.value = item.dataset.command + ' ';
-        inputEl.focus();
         container.style.display = 'none';
+        promoteCommandToChip(inputEl, item.dataset.command);
       });
     });
   }

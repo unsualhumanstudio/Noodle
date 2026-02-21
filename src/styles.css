@@ -1101,6 +1101,52 @@
   outline: none !important;
 }
 
+/* Active command chip row — sits above the textarea inside the input box */
+.noodle-ai-cmd-chip-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px 0;
+  gap: 6px;
+  empty-cells: hide;
+}
+
+.noodle-ai-cmd-chip-row:empty {
+  padding: 0;
+}
+
+.noodle-ai-active-cmd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  padding: 2px 6px 2px 8px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.noodle-ai-active-cmd-remove {
+  background: none;
+  border: none;
+  color: #93c5fd;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  transition: color 0.1s;
+}
+
+.noodle-ai-active-cmd-remove:hover {
+  color: #2563eb;
+}
+
 .noodle-ai-input {
   width: 100%;
   padding: 12px 14px 6px;
