@@ -21,6 +21,7 @@
   let folders = [];
   let colorLabels = { ...DEFAULT_COLOR_LABELS };
   let togglePosition = null; // { x, y } or null for default
+  let sidebarWidth = 380; // current sidebar width in px (user-resizable)
   let toolbar = null;
   let sidebar = null;
   let toggle = null;
@@ -261,7 +262,7 @@
   // Load all data from storage
   function loadData(callback) {
     try {
-      chrome.storage.local.get(['claudeHighlights', 'claudeFolders', 'claudeColorLabels', 'noodleTogglePosition'], (result) => {
+      chrome.storage.local.get(['claudeHighlights', 'claudeFolders', 'claudeColorLabels', 'noodleTogglePosition', 'noodleSidebarWidth'], (result) => {
         if (chrome.runtime.lastError) {
           console.error('Noodle storage error:', chrome.runtime.lastError);
           return;
@@ -270,8 +271,10 @@
         folders = result.claudeFolders || [];
         colorLabels = result.claudeColorLabels || { ...DEFAULT_COLOR_LABELS };
         togglePosition = result.noodleTogglePosition || null;
+        sidebarWidth = result.noodleSidebarWidth || 380;
         updateBadge();
         updateTogglePosition();
+        applySidebarWidth(sidebarWidth);
         renderSidebar();
         if (callback) callback();
       });
@@ -283,6 +286,53 @@
   // Save toggle position
   function saveTogglePosition() {
     chrome.storage.local.set({ noodleTogglePosition: togglePosition });
+  }
+
+  // Apply sidebar width — updates the sidebar element width and the toggle's docked right offset
+  function applySidebarWidth(w) {
+    if (!sidebar) return;
+    sidebar.style.width = w + 'px';
+    // If docked, keep toggle flush against the left edge of the panel
+    if (toggle && toggle.classList.contains('docked')) {
+      toggle.style.right = w + 'px';
+    }
+  }
+
+  // Wire up the drag-to-resize handle on the sidebar's left edge
+  function setupSidebarResize() {
+    const handle = sidebar?.querySelector('.noodle-sidebar-resize-handle');
+    if (!handle) return;
+
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const startX = e.clientX;
+      const startWidth = sidebar.offsetWidth;
+
+      // Add a full-screen cover so cursor stays correct even when moving fast
+      const cover = document.createElement('div');
+      cover.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:ew-resize;';
+      document.body.appendChild(cover);
+
+      function onMove(ev) {
+        const delta = startX - ev.clientX; // dragging left → positive delta → wider
+        const newWidth = Math.max(320, startWidth + delta);
+        sidebarWidth = newWidth;
+        applySidebarWidth(newWidth);
+      }
+
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        cover.remove();
+        // Persist the chosen width
+        chrome.storage.local.set({ noodleSidebarWidth: sidebarWidth });
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
   }
 
   // Update toggle button position (Y-axis only; X is fixed to right edge)
@@ -347,6 +397,7 @@
     if (!sidebar) return;
 
     sidebar.innerHTML = `
+      <div class="noodle-sidebar-resize-handle"></div>
       <div class="claude-highlighter-sidebar-header">
         <h2>Noodles</h2>
         <button class="claude-highlighter-close-btn">×</button>
@@ -382,10 +433,14 @@
       </div>
     `;
 
+    // Attach resize handle
+    setupSidebarResize();
+
     // Event listeners
     sidebar.querySelector('.claude-highlighter-close-btn').addEventListener('click', () => {
       sidebar.classList.remove('open');
       toggle.classList.remove('docked');
+      toggle.style.right = '';
       toggle.querySelectorAll('.noodle-toggle-btn').forEach(b => b.classList.remove('active'));
     });
 
@@ -523,6 +578,7 @@
       // Toggle closed
       sidebar.classList.remove('open');
       toggle.classList.remove('docked');
+      toggle.style.right = '';
       toggle.querySelector(`#noodle-btn-${mode === 'snippets' ? 'snippets' : 'think'}`)?.classList.remove('active');
       return;
     }
@@ -531,6 +587,7 @@
     aiHistoryOpen = false; // always start with history closed when opening panel
     sidebar.classList.add('open');
     toggle.classList.add('docked');
+    toggle.style.right = sidebarWidth + 'px';
 
     // Update active states
     toggle.querySelector('#noodle-btn-snippets').classList.toggle('active', mode === 'snippets');
@@ -1623,6 +1680,7 @@
 
       sidebar.innerHTML = buildChatPanelHTML(hasApiKey, currentChat, isChat);
 
+      setupSidebarResize();
       attachAiEventListeners(hasApiKey, isChat);
 
       const input = sidebar.querySelector('.noodle-ai-input');
@@ -1639,6 +1697,7 @@
     const clockIconSVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
 
     const headerHTML = `
+      <div class="noodle-sidebar-resize-handle"></div>
       <div class="noodle-chat-header">
         <div class="noodle-chat-header-title">
           <span>✨ ${isChat ? escapeHtml(currentChat.title || 'Think') : 'Think'}</span>
@@ -2056,6 +2115,7 @@
     root.querySelector('.noodle-chat-close-btn')?.addEventListener('click', () => {
       sidebar.classList.remove('open');
       toggle.classList.remove('docked');
+      toggle.style.right = '';
       toggle.querySelectorAll('.noodle-toggle-btn').forEach(b => b.classList.remove('active'));
     });
 

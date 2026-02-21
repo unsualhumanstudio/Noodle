@@ -180,7 +180,7 @@
   position: fixed;
   top: 0;
   right: 0;
-  width: 380px;
+  width: 380px; /* default — overridden by JS when user resizes */
   height: 100vh;
   background: #fafafa;
   border-left: 1px solid #e5e5e5;
@@ -195,6 +195,25 @@
 
 .claude-highlighter-sidebar.open {
   transform: translateX(0);
+}
+
+/* Resize handle — sits on the left edge of the sidebar */
+.noodle-sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 10000;
+  background: transparent;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.noodle-sidebar-resize-handle:hover,
+.noodle-sidebar-resize-handle:active {
+  background: rgba(99, 102, 241, 0.18);
 }
 
 .claude-highlighter-sidebar-header {
@@ -710,9 +729,10 @@
   pointer-events: none;
 }
 
-/* Docked state — pill sits flush against the left edge of the panel */
+/* Docked state — pill sits flush against the left edge of the panel.
+   The `right` value is overridden by JS inline style to match the dynamic sidebar width. */
 .claude-highlighter-toggle.docked {
-  right: 380px;
+  right: 380px; /* fallback — JS sets inline style dynamically */
   border-radius: 28px 0 0 28px;
   box-shadow: -2px 0 12px rgba(0, 0, 0, 0.1);
 }
