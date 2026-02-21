@@ -1687,7 +1687,7 @@
     });
   }
 
-  function renderChatPanel() {
+  function renderChatPanel(afterRender) {
     if (!sidebar) return;
     closeContextMenu(); // dismiss floating menu if open
 
@@ -1711,6 +1711,9 @@
 
       const input = sidebar.querySelector('.noodle-ai-input');
       if (input) setTimeout(() => input.focus(), 50);
+
+      // Run any post-render work (e.g. kick off a request after DOM is ready)
+      if (afterRender) afterRender();
 
       if (isChat) {
         const messagesEl = sidebar.querySelector('.noodle-ai-messages');
@@ -2519,9 +2522,9 @@
     chat.updatedAt = new Date().toISOString();
     saveChatHistory();
 
-    renderChatPanel();
-
-    sendAiRequest(chat, command);
+    // Pass sendAiRequest as a callback so it runs AFTER renderChatPanel rebuilds
+    // the DOM — otherwise the stop button / status indicator get wiped by the re-render
+    renderChatPanel(() => sendAiRequest(chat, command));
   }
 
   function parseAiCommand(text) {
