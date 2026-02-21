@@ -1700,7 +1700,10 @@
       <div class="noodle-sidebar-resize-handle"></div>
       <div class="noodle-chat-header">
         <div class="noodle-chat-header-title">
-          <span>✨ ${isChat ? escapeHtml(currentChat.title || 'Think') : 'Think'}</span>
+          ${isChat
+            ? `<span class="noodle-chat-title-text" data-chat-id="${currentChat.id}" title="Double-click to rename">✨ ${escapeHtml(currentChat.title || 'Think')}</span>`
+            : `<span>✨ Think</span>`
+          }
         </div>
         <div class="noodle-ai-header-actions">
           ${isChat ? '<button class="noodle-ai-new-chat-btn noodle-ai-header-btn">+ New</button>' : ''}
@@ -1803,9 +1806,12 @@
           ${aiChatHistory.map(chat => `
             <div class="noodle-ai-history-item ${chat.id === aiCurrentChatId ? 'active' : ''}"
                  data-chat-id="${chat.id}">
-              <span class="noodle-ai-history-item-title">${escapeHtml(chat.title || 'Untitled')}</span>
+              <span class="noodle-ai-history-item-title" data-chat-id="${chat.id}" title="Double-click to rename">${escapeHtml(chat.title || 'Untitled')}</span>
               <span class="noodle-ai-history-date">${formatDate(chat.updatedAt)}</span>
-              <button class="noodle-ai-history-delete" data-chat-id="${chat.id}" title="Delete">&times;</button>
+              <div class="noodle-ai-history-actions">
+                <button class="noodle-ai-history-rename" data-chat-id="${chat.id}" title="Rename">✏️</button>
+                <button class="noodle-ai-history-delete" data-chat-id="${chat.id}" title="Delete">&times;</button>
+              </div>
             </div>
           `).join('')}
         </div>
@@ -2119,6 +2125,14 @@
       toggle.querySelectorAll('.noodle-toggle-btn').forEach(b => b.classList.remove('active'));
     });
 
+    // Double-click chat title in header to rename
+    const headerTitleEl = root.querySelector('.noodle-chat-title-text');
+    if (headerTitleEl) {
+      headerTitleEl.addEventListener('dblclick', () => {
+        startInlineRename(headerTitleEl, headerTitleEl.dataset.chatId);
+      });
+    }
+
     // API key save
     const apiKeySaveBtn = root.querySelector('.noodle-ai-apikey-save');
     if (apiKeySaveBtn) {
@@ -2354,9 +2368,37 @@
     sidebar.querySelectorAll('.noodle-ai-history-item').forEach(item => {
       item.addEventListener('click', (e) => {
         if (e.target.classList.contains('noodle-ai-history-delete')) return;
+        if (e.target.classList.contains('noodle-ai-history-rename')) return;
+        if (e.target.classList.contains('noodle-ai-history-item-title')) return; // handled by dblclick
         aiCurrentChatId = item.dataset.chatId;
         aiHistoryOpen = false;
         renderChatPanel();
+      });
+    });
+
+    // Single click on title navigates; double-click triggers rename
+    sidebar.querySelectorAll('.noodle-ai-history-item-title').forEach(titleEl => {
+      titleEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const item = titleEl.closest('.noodle-ai-history-item');
+        if (!item) return;
+        aiCurrentChatId = item.dataset.chatId;
+        aiHistoryOpen = false;
+        renderChatPanel();
+      });
+      titleEl.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        startInlineRename(titleEl, titleEl.dataset.chatId);
+      });
+    });
+
+    // Rename button click
+    sidebar.querySelectorAll('.noodle-ai-history-rename').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const chatId = btn.dataset.chatId;
+        const titleEl = btn.closest('.noodle-ai-history-item')?.querySelector('.noodle-ai-history-item-title');
+        if (titleEl) startInlineRename(titleEl, chatId);
       });
     });
 
@@ -2686,6 +2728,70 @@ You also have access to a web search tool. Use it proactively to find current, r
       noodleChatHistory: aiChatHistory,
       noodleActiveChatId: aiCurrentChatId
     });
+  }
+
+  // Rename a chat in memory and persist; optionally refresh the panel
+  function renameChatTitle(chatId, newTitle) {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return;
+    const chat = aiChatHistory.find(c => c.id === chatId);
+    if (!chat) return;
+    chat.title = trimmed;
+    saveChatHistory();
+    // Refresh header title if this is the active chat
+    if (chatId === aiCurrentChatId) {
+      const titleEl = sidebar?.querySelector('.noodle-chat-title-text');
+      if (titleEl) titleEl.textContent = '✨ ' + trimmed;
+    }
+  }
+
+  // Activate inline rename on an element: replaces it with an <input>, commits on Enter/blur, cancels on Escape
+  function startInlineRename(titleEl, chatId) {
+    if (titleEl.dataset.renaming) return; // already editing
+    titleEl.dataset.renaming = 'true';
+
+    const original = titleEl.textContent.replace(/^✨\s*/, '').trim();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = original;
+    input.className = 'noodle-chat-rename-input';
+    input.setAttribute('data-noodle', 'true');
+
+    titleEl.replaceWith(input);
+    input.select();
+
+    function commit() {
+      const val = input.value.trim() || original;
+      renameChatTitle(chatId, val);
+      // Swap input back to span with updated text
+      const newSpan = document.createElement('span');
+      newSpan.className = titleEl.className;
+      newSpan.dataset.chatId = chatId;
+      newSpan.title = 'Double-click to rename';
+      // Preserve ✨ prefix only for header title spans
+      const isHeader = titleEl.classList.contains('noodle-chat-title-text');
+      newSpan.textContent = isHeader ? '✨ ' + val : val;
+      input.replaceWith(newSpan);
+      // Re-attach double-click
+      newSpan.addEventListener('dblclick', () => startInlineRename(newSpan, chatId));
+    }
+
+    function cancel() {
+      const newSpan = document.createElement('span');
+      newSpan.className = titleEl.className;
+      newSpan.dataset.chatId = chatId;
+      newSpan.title = 'Double-click to rename';
+      const isHeader = titleEl.classList.contains('noodle-chat-title-text');
+      newSpan.textContent = isHeader ? '✨ ' + original : original;
+      input.replaceWith(newSpan);
+      newSpan.addEventListener('dblclick', () => startInlineRename(newSpan, chatId));
+    }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    input.addEventListener('blur', commit);
   }
 
   function promoteCommandToChip(inputEl, cmdName) {

@@ -1761,7 +1761,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 20px;
+  padding-right: 56px; /* room for rename + delete buttons */
+  cursor: pointer;
 }
 
 .noodle-ai-history-date {
@@ -1770,11 +1771,6 @@
 }
 
 .noodle-ai-history-delete {
-  display: none;
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
   background: none;
   border: none;
   color: #bbb;
@@ -1791,8 +1787,63 @@
   background: #fef0f0;
 }
 
-.noodle-ai-history-item:hover .noodle-ai-history-delete {
-  display: block;
+/* Actions group (rename + delete) on history items */
+.noodle-ai-history-actions {
+  display: none;
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  align-items: center;
+  gap: 2px;
+}
+
+.noodle-ai-history-item:hover .noodle-ai-history-actions {
+  display: flex;
+}
+
+.noodle-ai-history-rename {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.1s ease;
+}
+
+.noodle-ai-history-rename:hover {
+  opacity: 1;
+  background: #f0f0f0;
+}
+
+/* Inline rename input — used in both history list and header */
+.noodle-chat-rename-input {
+  background: white !important;
+  border: 1px solid #6366f1 !important;
+  border-radius: 4px !important;
+  outline: none !important;
+  padding: 2px 6px !important;
+  font-size: 12px !important;
+  font-family: inherit !important;
+  color: #1a1a1a !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.15) !important;
+}
+
+/* Header title rename input is slightly larger */
+.noodle-chat-title-text {
+  cursor: default;
+}
+
+.noodle-chat-title-text:hover {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  cursor: text;
 }
 
 /* Dimmed clock icon when no history */
