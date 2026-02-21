@@ -201,9 +201,12 @@ async function handleResearchRequest(message, sender) {
 
   // Mutable copy of messages for the tool use loop
   let loopMessages = [...messages];
-  const MAX_TOOL_ROUNDS = 4; // safety cap
+  const MAX_TOOL_ROUNDS = 8; // allow enough rounds for multi-search commands like /market
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    // On the final round, force Claude to synthesize by disabling tools
+    const isLastRound = round === MAX_TOOL_ROUNDS - 1;
+
     let response;
     try {
       response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -218,9 +221,11 @@ async function handleResearchRequest(message, sender) {
           model: 'claude-sonnet-4-20250514',
           max_tokens: 4096,
           system: systemPrompt,
-          messages: loopMessages,
-          tools,
-          // On the last round (or first if no tool use), stream the final answer
+          messages: isLastRound
+            ? [...loopMessages, { role: 'user', content: 'You have completed your research. Now write your final answer using only what you have gathered so far.' }]
+            : loopMessages,
+          // On last round, omit tools so Claude is forced to respond with text
+          ...(isLastRound ? {} : { tools }),
           stream: false
         })
       });
@@ -341,11 +346,6 @@ async function handleResearchRequest(message, sender) {
     return;
   }
 
-  // Exhausted max tool rounds — send whatever we have
-  chrome.tabs.sendMessage(tabId, {
-    type: 'noodleAiStreamError', requestId,
-    error: 'Research exceeded maximum search rounds. Please try a more specific question.'
-  });
 }
 
 // Inject content script into a tab
