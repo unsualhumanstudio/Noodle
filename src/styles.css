@@ -2896,3 +2896,153 @@
   text-decoration: underline;
   text-decoration-color: #e5e5e5;
 }
+
+/* ═══════════════════════════════════════════════════════
+   TASK STATUS CHIP + PICKER + SETTINGS DIALOG
+   ═══════════════════════════════════════════════════════ */
+
+/* Status chip in editor meta row */
+.noodle-task-editor-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #444;
+  background: var(--status-color, #e2e8f0);
+  border-radius: 5px;
+  padding: 3px 6px 3px 8px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: filter 0.13s;
+}
+
+.noodle-task-editor-status-chip:hover {
+  filter: brightness(0.92);
+}
+
+.noodle-task-editor-status-chip svg {
+  flex-shrink: 0;
+  opacity: 0.45;
+}
+
+/* Status picker dropdown */
+.noodle-status-picker {
+  position: fixed;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.13);
+  border: 1px solid #eee;
+  z-index: 10010;
+  min-width: 160px;
+  padding: 4px 0;
+  overflow: hidden;
+}
+
+.noodle-status-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.noodle-status-picker-item:hover {
+  background: #f5f5f5;
+}
+
+.noodle-status-picker-item.active {
+  font-weight: 600;
+}
+
+.noodle-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.noodle-status-picker-divider {
+  height: 1px;
+  background: #eee;
+  margin: 3px 0;
+}
+
+.noodle-status-picker-edit {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #aaa;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.noodle-status-picker-edit:hover {
+  background: #f5f5f5;
+  color: #555;
+}
+
+/* Status settings dialog rows */
+.noodle-status-rows {
+  margin-bottom: 10px;
+}
+
+.noodle-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.noodle-status-color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  border: 1px solid #ddd;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 2px;
+  background: none;
+}
+
+.noodle-status-row .dialog-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.noodle-status-delete-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.13s;
+}
+
+.noodle-status-delete-btn:hover {
+  color: #e74c3c;
+}
+
+.noodle-status-add-btn {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 0;
+  text-align: left;
+  font-family: inherit;
+  transition: color 0.13s;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.noodle-status-add-btn:hover {
+  color: #333;
+}

@@ -10,6 +10,14 @@
     yellow: 'Notes'
   };
 
+  // Default task statuses (user can customize — stored as noodleTaskStatuses)
+  const DEFAULT_TASK_STATUSES = [
+    { id: 'todo',       label: 'To Do',       color: '#e2e8f0' },
+    { id: 'inprogress', label: 'In Progress',  color: '#fef3c7' },
+    { id: 'done',       label: 'Done',         color: '#d1fae5' },
+  ];
+  let taskStatuses = [...DEFAULT_TASK_STATUSES];
+
   const COLORS = {
     blue: '#D2DBF2',
     green: '#D2F2ED',
@@ -305,13 +313,14 @@
   // Load all data from storage
   function loadData(callback) {
     try {
-      chrome.storage.local.get(['claudeHighlights', 'claudeFolders', 'claudeColorLabels', 'noodleTogglePosition', 'noodleSidebarWidth', 'noodleTasks'], (result) => {
+      chrome.storage.local.get(['claudeHighlights', 'claudeFolders', 'claudeColorLabels', 'noodleTogglePosition', 'noodleSidebarWidth', 'noodleTasks', 'noodleTaskStatuses'], (result) => {
         if (chrome.runtime.lastError) {
           console.error('Noodle storage error:', chrome.runtime.lastError);
           return;
         }
         snippets = result.claudeHighlights || [];
         tasks = result.noodleTasks || [];
+        taskStatuses = result.noodleTaskStatuses || [...DEFAULT_TASK_STATUSES];
         folders = result.claudeFolders || [];
         colorLabels = result.claudeColorLabels || { ...DEFAULT_COLOR_LABELS };
         togglePosition = result.noodleTogglePosition || null;
@@ -422,6 +431,11 @@
       // directly into the tasks array and must not be torn down mid-edit
       if (sidebarMode === 'tasks' && taskEditingId === null) renderTaskPanel();
     });
+  }
+
+  // Save task statuses to storage
+  function saveTaskStatuses() {
+    chrome.storage.local.set({ noodleTaskStatuses: taskStatuses });
   }
 
   // Save folders to storage
@@ -618,8 +632,9 @@
     const task = tasks.find(t => t.id === taskId);
     if (!task) { showToast('Task not found'); return; }
 
-    // Lazy migration for tasks created before the notes field was added
+    // Lazy migration for tasks created before notes/status fields were added
     if (task.notes === undefined) task.notes = '';
+    if (!task.status) task.status = 'todo';
 
     taskEditingId = taskId;
 
@@ -633,6 +648,10 @@
       ? `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
       : `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
     const checkSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+    // Status lookup — fall back to first available status if stored id no longer exists
+    const statusObj = taskStatuses.find(s => s.id === task.status) || taskStatuses[0] || DEFAULT_TASK_STATUSES[0];
+    const chevronSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 
     sidebar.innerHTML = `
       <div class="noodle-sidebar-resize-handle"></div>
@@ -670,6 +689,14 @@
               <span class="noodle-task-editor-source-label">${sourceLabel}</span>
             </span>
           ` : ''}
+          <span class="noodle-task-editor-status-chip"
+                data-task-id="${taskId}"
+                data-status="${statusObj.id}"
+                title="Change status"
+                style="--status-color: ${statusObj.color}">
+            <span class="noodle-status-chip-label">${escapeHtml(statusObj.label)}</span>
+            ${chevronSVG}
+          </span>
           <span class="noodle-task-editor-date-chip" title="Created ${dateStr}">
             <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -782,6 +809,12 @@
     notesEl.addEventListener('blur', () => {
       if (notesEl.innerHTML === '<br>') notesEl.innerHTML = '';
     });
+
+    // ── Status chip ──────────────────────────────────────────────────────────
+    const statusChip = sidebar.querySelector('.noodle-task-editor-status-chip');
+    if (statusChip) {
+      statusChip.addEventListener('click', () => showStatusPicker(taskId, statusChip));
+    }
 
     // ── Source chip ──────────────────────────────────────────────────────────
     const sourceChip = sidebar.querySelector('.noodle-task-editor-source-chip');
@@ -906,6 +939,194 @@
         document.execCommand('formatBlock', false, 'h3');
       }
     }
+  }
+
+  // ─── Status Picker ───────────────────────────────────────────────────────────
+
+  function showStatusPicker(taskId, anchorEl) {
+    // Remove any existing picker
+    document.querySelector('.noodle-status-picker')?.remove();
+
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const picker = document.createElement('div');
+    picker.className = 'noodle-status-picker';
+    picker.innerHTML = taskStatuses.map(s => `
+      <div class="noodle-status-picker-item ${s.id === task.status ? 'active' : ''}" data-status-id="${s.id}">
+        <span class="noodle-status-dot" style="background:${s.color}; border: 1px solid rgba(0,0,0,0.08);"></span>
+        ${escapeHtml(s.label)}
+      </div>
+    `).join('') + `
+      <div class="noodle-status-picker-divider"></div>
+      <div class="noodle-status-picker-edit">Edit statuses...</div>
+    `;
+
+    document.body.appendChild(picker);
+
+    // Position below the chip, within viewport bounds
+    const rect = anchorEl.getBoundingClientRect();
+    const pickerRect = picker.getBoundingClientRect();
+    let top = rect.bottom + 4;
+    let left = rect.left;
+    if (left + pickerRect.width > window.innerWidth - 12) {
+      left = rect.right - pickerRect.width;
+    }
+    picker.style.top  = `${top}px`;
+    picker.style.left = `${left}px`;
+
+    // Status item click
+    picker.querySelectorAll('.noodle-status-picker-item').forEach(item => {
+      item.addEventListener('click', () => {
+        task.status = item.dataset.statusId;
+        saveTasks();
+        updateStatusChipInEditor(task);
+        picker.remove();
+      });
+    });
+
+    // Edit statuses click
+    picker.querySelector('.noodle-status-picker-edit').addEventListener('click', () => {
+      picker.remove();
+      showStatusSettingsDialog(taskId);
+    });
+
+    // Dismiss on outside click
+    setTimeout(() => {
+      document.addEventListener('click', function closePicker(e) {
+        if (!picker.contains(e.target)) {
+          picker.remove();
+          document.removeEventListener('click', closePicker);
+        }
+      });
+    }, 0);
+  }
+
+  // Update just the status chip in-place — no full re-render needed
+  function updateStatusChipInEditor(task) {
+    const chip = sidebar?.querySelector('.noodle-task-editor-status-chip');
+    if (!chip) return;
+    const s = taskStatuses.find(s => s.id === task.status) || taskStatuses[0] || DEFAULT_TASK_STATUSES[0];
+    chip.dataset.status = s.id;
+    chip.style.setProperty('--status-color', s.color);
+    const labelEl = chip.querySelector('.noodle-status-chip-label');
+    if (labelEl) labelEl.textContent = s.label;
+  }
+
+  // ─── Status Settings Dialog ───────────────────────────────────────────────────
+
+  function showStatusSettingsDialog(taskId) {
+    // Remove any existing dialog
+    document.querySelector('.claude-highlighter-dialog-overlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'claude-highlighter-dialog-overlay';
+
+    function buildRows() {
+      return taskStatuses.map((s, i) => `
+        <div class="noodle-status-row" data-index="${i}">
+          <input type="color" class="noodle-status-color-swatch" value="${s.color}" title="Pick color" data-index="${i}">
+          <input type="text" class="dialog-input noodle-status-label-input" value="${escapeHtml(s.label)}" placeholder="Status name" data-index="${i}">
+          <button class="noodle-status-delete-btn" data-index="${i}" title="Remove status">×</button>
+        </div>
+      `).join('');
+    }
+
+    overlay.innerHTML = `
+      <div class="claude-highlighter-dialog settings-dialog" style="width:300px;">
+        <h3 style="margin:0 0 16px; font-size:15px; font-weight:700;">Edit Statuses</h3>
+        <div class="noodle-status-rows">${buildRows()}</div>
+        <button class="noodle-status-add-btn">+ Add status</button>
+        <div class="dialog-actions">
+          <button class="secondary">Cancel</button>
+          <button class="primary">Save</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const rowsContainer = overlay.querySelector('.noodle-status-rows');
+
+    function attachRowListeners() {
+      // Delete buttons
+      rowsContainer.querySelectorAll('.noodle-status-delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.index);
+          // Don't delete if only one status left
+          if (rowsContainer.querySelectorAll('.noodle-status-row').length <= 1) {
+            showToast('Need at least one status');
+            return;
+          }
+          btn.closest('.noodle-status-row').remove();
+          // Re-index remaining rows
+          rowsContainer.querySelectorAll('.noodle-status-row').forEach((row, i) => {
+            row.dataset.index = i;
+            row.querySelectorAll('[data-index]').forEach(el => el.dataset.index = i);
+          });
+        });
+      });
+    }
+
+    attachRowListeners();
+
+    // Add status button
+    overlay.querySelector('.noodle-status-add-btn').addEventListener('click', () => {
+      const idx = rowsContainer.querySelectorAll('.noodle-status-row').length;
+      const newRow = document.createElement('div');
+      newRow.className = 'noodle-status-row';
+      newRow.dataset.index = idx;
+      newRow.innerHTML = `
+        <input type="color" class="noodle-status-color-swatch" value="#e2e8f0" data-index="${idx}">
+        <input type="text" class="dialog-input noodle-status-label-input" value="" placeholder="Status name" data-index="${idx}">
+        <button class="noodle-status-delete-btn" data-index="${idx}" title="Remove status">×</button>
+      `;
+      rowsContainer.appendChild(newRow);
+      attachRowListeners();
+      newRow.querySelector('.noodle-status-label-input').focus();
+    });
+
+    // Save
+    overlay.querySelector('.primary').addEventListener('click', () => {
+      const rows = rowsContainer.querySelectorAll('.noodle-status-row');
+      const newStatuses = [];
+      rows.forEach((row, i) => {
+        const label = row.querySelector('.noodle-status-label-input').value.trim();
+        const color = row.querySelector('.noodle-status-color-swatch').value;
+        if (!label) return; // skip empty rows
+        // Preserve existing IDs where possible; generate new ones for added rows
+        const existingId = taskStatuses[i]?.id || ('status_' + Date.now() + '_' + i);
+        newStatuses.push({ id: existingId, label, color });
+      });
+      if (newStatuses.length === 0) {
+        showToast('Need at least one status');
+        return;
+      }
+      taskStatuses = newStatuses;
+      saveTaskStatuses();
+      overlay.remove();
+      showToast('Statuses saved');
+      // Re-open the picker so user sees updated list, if still in editor
+      if (taskId && taskEditingId === taskId) {
+        const task = tasks.find(t => t.id === taskId);
+        if (task) {
+          // Ensure task's status still exists; reset to first if not
+          if (!taskStatuses.find(s => s.id === task.status)) {
+            task.status = taskStatuses[0].id;
+            saveTasks();
+          }
+          updateStatusChipInEditor(task);
+        }
+      }
+    });
+
+    // Cancel
+    overlay.querySelector('.secondary').addEventListener('click', () => overlay.remove());
+
+    // Close on backdrop click
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
   }
 
   // Render the full sidebar
@@ -1867,6 +2088,7 @@
       id: Date.now().toString(),
       text: text.trim(),
       notes: '',
+      status: 'todo',
       sourceUrl: window.location.href,
       sourceTitle: document.title || window.location.hostname,
       sourceChatId: null,
@@ -1890,6 +2112,7 @@
       id: Date.now().toString(),
       text: text.trim(),
       notes: '',
+      status: 'todo',
       sourceUrl: null,
       sourceTitle: chat ? (chat.title || 'AI Chat') : 'AI Chat',
       sourceChatId: chatId || null,
