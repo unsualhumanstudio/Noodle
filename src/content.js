@@ -14,10 +14,13 @@
     blue: '#D2DBF2',
     green: '#D2F2ED',
     coral: '#FED7CE',
-    yellow: '#F0E7A8'
+    yellow: '#F0E7A8',
+    task: '#FDE8B4'   // warm amber — 5th color for tasks
   };
 
   let snippets = [];
+  let tasks = [];          // [{id, text, sourceUrl, sourceTitle, sourceChatId, createdAt, done, doneAt}]
+  let taskTab = 'inbox';   // 'inbox' | 'archive'
   let folders = [];
   let colorLabels = { ...DEFAULT_COLOR_LABELS };
   let togglePosition = null; // { x, y } or null for default
@@ -302,17 +305,19 @@
   // Load all data from storage
   function loadData(callback) {
     try {
-      chrome.storage.local.get(['claudeHighlights', 'claudeFolders', 'claudeColorLabels', 'noodleTogglePosition', 'noodleSidebarWidth'], (result) => {
+      chrome.storage.local.get(['claudeHighlights', 'claudeFolders', 'claudeColorLabels', 'noodleTogglePosition', 'noodleSidebarWidth', 'noodleTasks'], (result) => {
         if (chrome.runtime.lastError) {
           console.error('Noodle storage error:', chrome.runtime.lastError);
           return;
         }
         snippets = result.claudeHighlights || [];
+        tasks = result.noodleTasks || [];
         folders = result.claudeFolders || [];
         colorLabels = result.claudeColorLabels || { ...DEFAULT_COLOR_LABELS };
         togglePosition = result.noodleTogglePosition || null;
         sidebarWidth = result.noodleSidebarWidth || 380;
         updateBadge();
+        updateTaskBadge();
         updateTogglePosition();
         applySidebarWidth(sidebarWidth);
         renderSidebar();
@@ -409,6 +414,14 @@
     });
   }
 
+  // Save tasks to storage
+  function saveTasks() {
+    chrome.storage.local.set({ noodleTasks: tasks }, () => {
+      updateTaskBadge();
+      if (sidebarMode === 'tasks') renderTaskPanel();
+    });
+  }
+
   // Save folders to storage
   function saveFolders() {
     chrome.storage.local.set({ claudeFolders: folders }, () => {
@@ -430,6 +443,156 @@
     // Append to our protected root, or body as fallback
     (noodleRoot || document.body).appendChild(sidebar);
     renderSidebar();
+  }
+
+  // ─── Task Panel ──────────────────────────────────────────────────────────────
+
+  function renderTaskPanel() {
+    if (!sidebar) return;
+
+    const inboxTasks   = tasks.filter(t => !t.done);
+    const archiveTasks = tasks.filter(t => t.done);
+    const isInbox      = taskTab === 'inbox';
+    const displayList  = isInbox ? inboxTasks : archiveTasks;
+
+    sidebar.innerHTML = `
+      <div class="noodle-sidebar-resize-handle"></div>
+      <div class="noodle-task-header">
+        <div class="noodle-task-header-left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="5" width="6" height="6" rx="1"/>
+            <path d="M15 6h4"/>
+            <rect x="3" y="13" width="6" height="6" rx="1"/>
+            <path d="M15 14h4"/>
+            <path d="M15 18h4"/>
+          </svg>
+          <span>Tasks</span>
+        </div>
+        <button class="claude-highlighter-close-btn noodle-task-close-btn">×</button>
+      </div>
+
+      <div class="noodle-task-tabs">
+        <button class="noodle-task-tab ${isInbox ? 'active' : ''}" data-tab="inbox">
+          Inbox
+          ${inboxTasks.length > 0 ? `<span class="noodle-task-tab-count">${inboxTasks.length}</span>` : ''}
+        </button>
+        <button class="noodle-task-tab ${!isInbox ? 'active' : ''}" data-tab="archive">
+          Archive
+          ${archiveTasks.length > 0 ? `<span class="noodle-task-tab-count">${archiveTasks.length}</span>` : ''}
+        </button>
+      </div>
+
+      <div class="noodle-task-list">
+        ${displayList.length === 0 ? `
+          <div class="noodle-task-empty">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 11l3 3L22 4"/>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            <p>${isInbox ? 'No tasks yet' : 'No archived tasks'}</p>
+            ${isInbox ? '<p class="noodle-task-empty-hint">Highlight text on any page and choose the amber Task color, or select text in AI chat.</p>' : ''}
+          </div>
+        ` : displayList.map(task => buildTaskItemHTML(task, isInbox)).join('')}
+      </div>
+    `;
+
+    setupSidebarResize();
+
+    // Close button
+    sidebar.querySelector('.noodle-task-close-btn').addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      toggle.classList.remove('docked');
+      toggle.style.right = '';
+      toggle.querySelectorAll('.noodle-toggle-btn').forEach(b => b.classList.remove('active'));
+    });
+
+    // Tab switching
+    sidebar.querySelectorAll('.noodle-task-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        taskTab = tab.dataset.tab;
+        renderTaskPanel();
+      });
+    });
+
+    // Task item interactions
+    attachTaskListeners();
+  }
+
+  function buildTaskItemHTML(task, isInbox) {
+    const date = new Date(task.createdAt);
+    const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const hasSource = task.sourceUrl || task.sourceChatId;
+    const sourceLabel = task.sourceChatId
+      ? `AI: ${escapeHtml(task.sourceTitle || 'Chat')}`
+      : escapeHtml(task.sourceTitle || task.sourceUrl || '');
+    const sourceIcon = task.sourceChatId
+      ? `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
+
+    return `
+      <div class="noodle-task-item ${task.done ? 'done' : ''}" data-task-id="${task.id}">
+        <button class="noodle-task-check" data-task-id="${task.id}" title="${isInbox ? 'Mark done' : 'Restore to inbox'}">
+          ${task.done
+            ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+            : ''}
+        </button>
+        <div class="noodle-task-body">
+          <p class="noodle-task-text">${escapeHtml(task.text)}</p>
+          <div class="noodle-task-meta">
+            ${hasSource ? `
+              <span class="noodle-task-source" data-task-id="${task.id}" data-source-url="${task.sourceUrl || ''}" data-chat-id="${task.sourceChatId || ''}">
+                ${sourceIcon}
+                <span class="noodle-task-source-label">${sourceLabel}</span>
+              </span>
+            ` : ''}
+            <span class="noodle-task-date">${dateStr}</span>
+          </div>
+        </div>
+        <button class="noodle-task-delete" data-task-id="${task.id}" title="Delete task">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    `;
+  }
+
+  function attachTaskListeners() {
+    if (!sidebar) return;
+
+    // Check/uncheck (complete / restore)
+    sidebar.querySelectorAll('.noodle-task-check').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.taskId;
+        const task = tasks.find(t => t.id === id);
+        if (!task) return;
+        task.done = !task.done;
+        task.doneAt = task.done ? new Date().toISOString() : null;
+        saveTasks();
+      });
+    });
+
+    // Delete
+    sidebar.querySelectorAll('.noodle-task-delete').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.taskId;
+        tasks = tasks.filter(t => t.id !== id);
+        saveTasks();
+      });
+    });
+
+    // Source link — open URL or switch to chat
+    sidebar.querySelectorAll('.noodle-task-source').forEach(link => {
+      link.addEventListener('click', () => {
+        const sourceUrl = link.dataset.sourceUrl;
+        const chatId = link.dataset.chatId;
+        if (chatId) {
+          // Open the AI chat panel on that conversation
+          aiCurrentChatId = chatId;
+          openPanel('chat');
+        } else if (sourceUrl) {
+          window.open(sourceUrl, '_blank');
+        }
+      });
+    });
   }
 
   // Render the full sidebar
@@ -539,6 +702,17 @@
           <path fill="#fff" d="M32.6 44c-4.2 1-14.9 2.3-16.8.3c-.9-.9-.7-2.2-.4-4.5s-1.9-4.7-3.5-4.9c-1.9-.2-3 1.2-2.3 3.2C11 42.6 8.2 44 8 47.3c-.1 1.9-.7 5.1 2.2 9.2c3.3 4.6 9 4.7 11 4.6c2.3-.1 3.3-.2 3.8-1.2c.6-1.2.3-1.5.6-1.9c.5-.9.8-.8 1.1-1.9s-.5-1.8-.3-2.3c.4-1.2 1.4-1 .4-3.8c3.4-.5 5.6-1 7.6-2.2c3.7-2 .5-4.3-1.8-3.8"/>
         </svg>
       </button>
+      <div class="noodle-toggle-divider"></div>
+      <button class="noodle-toggle-btn" id="noodle-btn-tasks" title="Tasks">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FDE8B4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="5" width="6" height="6" rx="1"/>
+          <path d="M15 6h4"/>
+          <rect x="3" y="13" width="6" height="6" rx="1"/>
+          <path d="M15 14h4"/>
+          <path d="M15 18h4"/>
+        </svg>
+        <span class="task-badge" style="display:none;">0</span>
+      </button>
     `;
     document.body.appendChild(toggle);
 
@@ -606,8 +780,16 @@
       openPanel('chat');
     });
 
+    // Tasks button — open tasks panel
+    toggle.querySelector('#noodle-btn-tasks').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (hasMoved) return;
+      openPanel('tasks');
+    });
+
     setupTooltip(toggle.querySelector('#noodle-btn-snippets'), 'Noodles');
     setupTooltip(toggle.querySelector('#noodle-btn-think'), 'Think');
+    setupTooltip(toggle.querySelector('#noodle-btn-tasks'), 'Tasks');
   }
 
   function openPanel(mode) {
@@ -619,7 +801,7 @@
       sidebar.classList.remove('open');
       toggle.classList.remove('docked');
       toggle.style.right = '';
-      toggle.querySelector(`#noodle-btn-${mode === 'snippets' ? 'snippets' : 'think'}`)?.classList.remove('active');
+      toggle.querySelectorAll('.noodle-toggle-btn').forEach(b => b.classList.remove('active'));
       return;
     }
 
@@ -632,9 +814,12 @@
     // Update active states
     toggle.querySelector('#noodle-btn-snippets').classList.toggle('active', mode === 'snippets');
     toggle.querySelector('#noodle-btn-think').classList.toggle('active', mode === 'chat');
+    toggle.querySelector('#noodle-btn-tasks').classList.toggle('active', mode === 'tasks');
 
     if (mode === 'snippets') {
       renderSidebar();
+    } else if (mode === 'tasks') {
+      renderTaskPanel();
     } else {
       renderChatPanel();
     }
@@ -646,6 +831,20 @@
     if (badge) {
       if (snippets.length > 0) {
         badge.textContent = snippets.length;
+        badge.style.display = 'flex';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+  }
+
+  // Update task badge count (on the tasks icon button)
+  function updateTaskBadge() {
+    const badge = toggle?.querySelector('#noodle-btn-tasks .task-badge');
+    if (badge) {
+      const inboxCount = tasks.filter(t => !t.done).length;
+      if (inboxCount > 0) {
+        badge.textContent = inboxCount;
         badge.style.display = 'flex';
       } else {
         badge.style.display = 'none';
@@ -1227,6 +1426,12 @@
       <button class="claude-highlighter-color-btn green" data-color="green" title="${colorLabels.green}"></button>
       <button class="claude-highlighter-color-btn coral" data-color="coral" title="${colorLabels.coral}"></button>
       <button class="claude-highlighter-color-btn yellow" data-color="yellow" title="${colorLabels.yellow}"></button>
+      <div class="toolbar-divider"></div>
+      <button class="claude-highlighter-color-btn task" data-color="task" title="Task">
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.5)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </button>
     `;
 
     document.body.appendChild(toolbar);
@@ -1247,11 +1452,11 @@
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const color = e.target.dataset.color;
+        const color = e.currentTarget.dataset.color;
         saveHighlight(color);
       });
       const color = btn.dataset.color;
-      setupTooltip(btn, colorLabels[color]);
+      setupTooltip(btn, color === 'task' ? 'Task' : colorLabels[color]);
     });
 
     // Close toolbar on click outside (with delay to allow button clicks)
@@ -1298,6 +1503,15 @@
   function saveHighlight(color) {
     if (!currentSelection) return;
 
+    // Task color — route to task list instead of snippets
+    if (color === 'task') {
+      saveWebPageTask(currentSelection.text, currentSelection.range);
+      removeToolbar();
+      window.getSelection().removeAllRanges();
+      currentSelection = null;
+      return;
+    }
+
     const snippetId = Date.now().toString();
 
     // Get text anchoring data for persistent highlights
@@ -1325,6 +1539,45 @@
     currentSelection = null;
 
     showToast(`Saved to ${colorLabels[color]}`);
+  }
+
+  // Save a web-page text selection as a task
+  function saveWebPageTask(text, range) {
+    const task = {
+      id: Date.now().toString(),
+      text: text.trim(),
+      sourceUrl: window.location.href,
+      sourceTitle: document.title || window.location.hostname,
+      sourceChatId: null,
+      createdAt: new Date().toISOString(),
+      done: false,
+      doneAt: null
+    };
+    tasks.unshift(task);
+    saveTasks();
+
+    // Apply a visual amber highlight so the user can see what was captured
+    if (range) applySimpleHighlight(range, 'task');
+
+    showToast('Added to Tasks ✓');
+  }
+
+  // Save an AI chat selection as a task
+  function saveAiChatTask(text, chatId) {
+    const chat = aiChatHistory.find(c => c.id === chatId);
+    const task = {
+      id: Date.now().toString(),
+      text: text.trim(),
+      sourceUrl: null,
+      sourceTitle: chat ? (chat.title || 'AI Chat') : 'AI Chat',
+      sourceChatId: chatId || null,
+      createdAt: new Date().toISOString(),
+      done: false,
+      doneAt: null
+    };
+    tasks.unshift(task);
+    saveTasks();
+    showToast('Added to Tasks ✓');
   }
 
   // Apply a simple highlight (no animation, stays until page reload)
@@ -2286,6 +2539,86 @@
 
     // Citation superscripts and source items in messages
     attachCitationListeners();
+
+    // AI chat selection — show a mini toolbar for saving selections as snippets or tasks
+    const messagesEl = root.querySelector('.noodle-ai-messages');
+    if (messagesEl) {
+      messagesEl.addEventListener('mouseup', (e) => {
+        // Small delay so selection is committed
+        setTimeout(() => {
+          const sel = window.getSelection();
+          const text = sel?.toString().trim();
+          if (!text || text.length < 3) return;
+
+          // Remove any existing AI snippet toolbar
+          document.querySelector('.noodle-ai-snippet-toolbar')?.remove();
+
+          const range = sel.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          const sidebarRect = sidebar.getBoundingClientRect();
+
+          // Position fixed (viewport-relative) so sidebar overflow:hidden doesn't clip it
+          const tbarLeft = Math.max(sidebarRect.left + 8, Math.min(rect.left, sidebarRect.right - 180));
+          const tbarTop  = rect.bottom + 6;
+
+          const tbar = document.createElement('div');
+          tbar.className = 'noodle-ai-snippet-toolbar';
+          tbar.style.top  = tbarTop  + 'px';
+          tbar.style.left = tbarLeft + 'px';
+          tbar.innerHTML = `
+            <button class="noodle-ai-snip-btn" data-color="blue" title="${colorLabels.blue}"><span class="snip-dot blue"></span></button>
+            <button class="noodle-ai-snip-btn" data-color="green" title="${colorLabels.green}"><span class="snip-dot green"></span></button>
+            <button class="noodle-ai-snip-btn" data-color="coral" title="${colorLabels.coral}"><span class="snip-dot coral"></span></button>
+            <button class="noodle-ai-snip-btn" data-color="yellow" title="${colorLabels.yellow}"><span class="snip-dot yellow"></span></button>
+            <div class="snip-divider"></div>
+            <button class="noodle-ai-snip-btn task" data-color="task" title="Add to Tasks">
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.55)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+          `;
+
+          document.body.appendChild(tbar);
+
+          tbar.querySelectorAll('.noodle-ai-snip-btn').forEach(btn => {
+            btn.addEventListener('mousedown', (ev) => {
+              ev.preventDefault(); // prevent losing selection
+              const color = btn.dataset.color;
+              const capturedText = text;
+              tbar.remove();
+
+              if (color === 'task') {
+                saveAiChatTask(capturedText, aiCurrentChatId);
+              } else {
+                // Save as snippet sourced from AI chat
+                const snippet = {
+                  id: Date.now().toString(),
+                  text: capturedText,
+                  color: color,
+                  timestamp: new Date().toISOString(),
+                  url: window.location.href,
+                  favicon: getFaviconUrl(window.location.href),
+                  folderId: null,
+                  anchor: null
+                };
+                snippets.unshift(snippet);
+                saveSnippets();
+                showToast(`Saved to ${colorLabels[color]}`);
+              }
+
+              sel.removeAllRanges();
+            });
+          });
+
+          // Dismiss on click outside
+          const dismissHandler = (ev) => {
+            if (!tbar.contains(ev.target)) {
+              tbar.remove();
+              document.removeEventListener('mousedown', dismissHandler);
+            }
+          };
+          setTimeout(() => document.addEventListener('mousedown', dismissHandler), 10);
+        }, 10);
+      });
+    }
   }
 
   function attachCitationListeners() {
