@@ -265,7 +265,7 @@ async function handleResearchRequest(message, sender) {
           query
         });
 
-        // Call Tavily
+        // Call Tavily — keep results small to avoid blowing the Claude TPM limit
         let tavilyResults = [];
         try {
           const tavilyResp = await fetch('https://api.tavily.com/search', {
@@ -275,7 +275,7 @@ async function handleResearchRequest(message, sender) {
               api_key: tavilyKey,
               query,
               search_depth: 'basic',
-              max_results: 5,
+              max_results: 3,
               include_answer: false
             })
           });
@@ -289,6 +289,7 @@ async function handleResearchRequest(message, sender) {
         }
 
         // Build tool result content for Claude + register web citations
+        // Keep snippet short (150 chars) to limit context growth across rounds
         let resultContent = '';
         if (tavilyResults.length === 0) {
           resultContent = 'No results found for this query.';
@@ -296,7 +297,7 @@ async function handleResearchRequest(message, sender) {
           tavilyResults.forEach(r => {
             const idx = webCitIndex++;
             webCitations.push({ index: idx, url: r.url, title: r.title || r.url });
-            resultContent += `{W${idx}} ${r.title || r.url}\nURL: ${r.url}\nContent: ${(r.content || '').substring(0, 400)}\n\n`;
+            resultContent += `{W${idx}} ${r.title || r.url}\nURL: ${r.url}\nContent: ${(r.content || '').substring(0, 150)}\n\n`;
           });
         }
 
@@ -307,8 +308,9 @@ async function handleResearchRequest(message, sender) {
         });
       }
 
-      // Append tool results and loop again
+      // Append tool results and pause briefly to avoid hitting Claude's TPM rate limit
       loopMessages.push({ role: 'user', content: toolResults });
+      await new Promise(resolve => setTimeout(resolve, 1000));
       continue; // next round — Claude will now synthesize
     }
 
