@@ -418,7 +418,9 @@
   function saveTasks() {
     chrome.storage.local.set({ noodleTasks: tasks }, () => {
       updateTaskBadge();
-      if (sidebarMode === 'tasks') renderTaskPanel();
+      // Only re-render the list if we're NOT in the editor — the editor auto-saves
+      // directly into the tasks array and must not be torn down mid-edit
+      if (sidebarMode === 'tasks' && taskEditingId === null) renderTaskPanel();
     });
   }
 
@@ -529,6 +531,9 @@
       ? `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
       : `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
 
+    // Amber dot shown when the task has notes written in the editor
+    const hasNotes = task.notes && task.notes.trim() !== '' && task.notes !== '<br>';
+
     return `
       <div class="noodle-task-item ${task.done ? 'done' : ''}" data-task-id="${task.id}">
         <button class="noodle-task-check" data-task-id="${task.id}" title="${isInbox ? 'Mark done' : 'Restore to inbox'}">
@@ -546,6 +551,7 @@
               </span>
             ` : ''}
             <span class="noodle-task-date">${dateStr}</span>
+            ${hasNotes ? `<span class="noodle-task-notes-dot" title="Has notes">•</span>` : ''}
           </div>
         </div>
         <button class="noodle-task-delete" data-task-id="${task.id}" title="Delete task">
@@ -593,6 +599,313 @@
         }
       });
     });
+
+    // Click task title text → open the editor
+    sidebar.querySelectorAll('.noodle-task-text').forEach(p => {
+      p.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = p.closest('.noodle-task-item')?.dataset.taskId;
+        if (id) renderTaskEditor(id);
+      });
+    });
+  }
+
+  // ─── Task Editor ─────────────────────────────────────────────────────────────
+
+  function renderTaskEditor(taskId) {
+    if (!sidebar) return;
+
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) { showToast('Task not found'); return; }
+
+    // Lazy migration for tasks created before the notes field was added
+    if (task.notes === undefined) task.notes = '';
+
+    taskEditingId = taskId;
+
+    const createdDate = new Date(task.createdAt);
+    const dateStr = createdDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const hasSource = task.sourceUrl || task.sourceChatId;
+    const sourceLabel = task.sourceChatId
+      ? `AI: ${escapeHtml(task.sourceTitle || 'Chat')}`
+      : escapeHtml(task.sourceTitle || task.sourceUrl || '');
+    const sourceIcon = task.sourceChatId
+      ? `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
+    const checkSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+    sidebar.innerHTML = `
+      <div class="noodle-sidebar-resize-handle"></div>
+
+      <div class="noodle-task-editor-header">
+        <button class="noodle-task-editor-back-btn" title="Back to Tasks">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          Tasks
+        </button>
+        <button class="noodle-task-editor-check ${task.done ? 'done' : ''}"
+                data-task-id="${taskId}"
+                title="${task.done ? 'Mark incomplete' : 'Mark done'}">
+          ${task.done ? checkSVG : ''}
+        </button>
+      </div>
+
+      <div class="noodle-task-editor-body">
+
+        <div class="noodle-task-editor-title-wrap">
+          <div class="noodle-task-editor-title"
+               contenteditable="true"
+               data-placeholder="Task title"
+               spellcheck="true">${escapeHtml(task.text)}</div>
+        </div>
+
+        <div class="noodle-task-editor-meta">
+          ${hasSource ? `
+            <span class="noodle-task-editor-source-chip"
+                  data-source-url="${task.sourceUrl || ''}"
+                  data-chat-id="${task.sourceChatId || ''}"
+                  title="${sourceLabel}">
+              ${sourceIcon}
+              <span class="noodle-task-editor-source-label">${sourceLabel}</span>
+            </span>
+          ` : ''}
+          <span class="noodle-task-editor-date-chip" title="Created ${dateStr}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            ${dateStr}
+          </span>
+        </div>
+
+        <div class="noodle-task-editor-divider"></div>
+
+        <div class="noodle-task-editor-notes"
+             contenteditable="true"
+             data-placeholder="Add notes, context, links..."
+             spellcheck="true">${task.notes || ''}</div>
+
+      </div>
+    `;
+
+    setupSidebarResize();
+    attachTaskEditorListeners(taskId);
+  }
+
+  function attachTaskEditorListeners(taskId) {
+    if (!sidebar) return;
+
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const titleEl = sidebar.querySelector('.noodle-task-editor-title');
+    const notesEl = sidebar.querySelector('.noodle-task-editor-notes');
+
+    // ── Back button ──────────────────────────────────────────────────────────
+    sidebar.querySelector('.noodle-task-editor-back-btn').addEventListener('click', () => {
+      taskEditingId = null;
+      clearTimeout(taskEditorSaveTimer);
+      // Flush any unsaved title
+      const newText = titleEl?.textContent.trim();
+      if (newText) task.text = newText;
+      saveTasks(); // saveTasks won't re-render (taskEditingId is now null, triggers list)
+    });
+
+    // ── Done toggle ──────────────────────────────────────────────────────────
+    const checkBtn = sidebar.querySelector('.noodle-task-editor-check');
+    const checkSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+    checkBtn.addEventListener('click', () => {
+      task.done = !task.done;
+      task.doneAt = task.done ? new Date().toISOString() : null;
+      checkBtn.classList.toggle('done', task.done);
+      checkBtn.title = task.done ? 'Mark incomplete' : 'Mark done';
+      checkBtn.innerHTML = task.done ? checkSVG : '';
+      saveTasks(); // guard in saveTasks() prevents re-render while editor is open
+    });
+
+    // ── Title field ──────────────────────────────────────────────────────────
+
+    // Enter → jump to notes
+    titleEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        notesEl.focus();
+        const sel = window.getSelection();
+        const range = document.createRange();
+        const target = notesEl.firstChild || notesEl;
+        range.setStart(target, 0);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
+
+    // Strip newlines on paste
+    titleEl.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, text.replace(/[\r\n]+/g, ' '));
+    });
+
+    // Debounced save on input
+    titleEl.addEventListener('input', () => {
+      const newText = titleEl.textContent.trim();
+      if (newText) task.text = newText;
+      scheduleEditorSave();
+    });
+
+    // Immediate save on blur; restore if emptied
+    titleEl.addEventListener('blur', () => {
+      const newText = titleEl.textContent.trim();
+      if (newText) {
+        task.text = newText;
+      } else {
+        titleEl.textContent = task.text; // restore previous
+      }
+      clearTimeout(taskEditorSaveTimer);
+      saveTasks();
+    });
+
+    // ── Notes field ──────────────────────────────────────────────────────────
+
+    notesEl.addEventListener('keydown', (e) => handleNotesKeydown(e, notesEl));
+
+    notesEl.addEventListener('input', () => {
+      task.notes = notesEl.innerHTML;
+      scheduleEditorSave();
+    });
+
+    // Strip Chrome's ghost <br> so CSS placeholder shows correctly
+    notesEl.addEventListener('blur', () => {
+      if (notesEl.innerHTML === '<br>') notesEl.innerHTML = '';
+    });
+
+    // ── Source chip ──────────────────────────────────────────────────────────
+    const sourceChip = sidebar.querySelector('.noodle-task-editor-source-chip');
+    if (sourceChip) {
+      sourceChip.addEventListener('click', () => {
+        const chatId = sourceChip.dataset.chatId;
+        const sourceUrl = sourceChip.dataset.sourceUrl;
+        if (chatId) {
+          aiCurrentChatId = chatId;
+          taskEditingId = null;
+          openPanel('chat');
+        } else if (sourceUrl) {
+          window.open(sourceUrl, '_blank');
+        }
+      });
+    }
+
+    // ── Auto-focus ───────────────────────────────────────────────────────────
+    setTimeout(() => {
+      if (task.text) {
+        notesEl.focus();
+      } else {
+        titleEl.focus();
+      }
+    }, 50);
+
+    // ── Debounce helper ──────────────────────────────────────────────────────
+    function scheduleEditorSave() {
+      clearTimeout(taskEditorSaveTimer);
+      taskEditorSaveTimer = setTimeout(() => saveTasks(), 500);
+    }
+  }
+
+  // Rich-text keyboard handler for the notes contenteditable
+  function handleNotesKeydown(e, el) {
+    // Bold: Cmd/Ctrl+B
+    if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+      e.preventDefault();
+      document.execCommand('bold');
+      return;
+    }
+
+    // Italic: Cmd/Ctrl+I
+    if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
+      e.preventDefault();
+      document.execCommand('italic');
+      return;
+    }
+
+    // Tab / Shift+Tab — indent list items or insert spaces
+    if (e.key === 'Tab') {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      const node = range.startContainer;
+      const li = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node)?.closest('li');
+      e.preventDefault();
+      if (li) {
+        document.execCommand(e.shiftKey ? 'outdent' : 'indent');
+      } else {
+        document.execCommand('insertText', false, '    ');
+      }
+      return;
+    }
+
+    // Enter inside an empty <li> → exit list, insert paragraph
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      const node = range.startContainer;
+      const li = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node)?.closest('li');
+      if (li && li.textContent.trim() === '') {
+        e.preventDefault();
+        const list = li.closest('ul, ol');
+        const newP = document.createElement('p');
+        newP.innerHTML = '<br>';
+        list.parentNode.insertBefore(newP, list.nextSibling);
+        li.remove();
+        if (list.querySelectorAll('li').length === 0) list.remove();
+        const newRange = document.createRange();
+        newRange.setStart(newP, 0);
+        newRange.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      }
+      return; // otherwise let browser create <li> naturally
+    }
+
+    // Markdown shortcuts triggered by Space
+    if (e.key === ' ') {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      const node = range.startContainer;
+      if (node.nodeType !== Node.TEXT_NODE) return;
+
+      const textBefore = node.textContent.substring(0, range.startOffset);
+
+      // `-` or `*` at line start → bullet list
+      if (textBefore === '-' || textBefore === '*') {
+        e.preventDefault();
+        node.textContent = node.textContent.substring(1);
+        const r2 = document.createRange();
+        r2.setStart(node, 0);
+        r2.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(r2);
+        document.execCommand('insertUnorderedList');
+        return;
+      }
+
+      // `#` at line start → h3 heading
+      if (textBefore === '#') {
+        e.preventDefault();
+        node.textContent = node.textContent.substring(1);
+        const r2 = document.createRange();
+        r2.setStart(node, 0);
+        r2.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(r2);
+        document.execCommand('formatBlock', false, 'h3');
+      }
+    }
   }
 
   // Render the full sidebar
@@ -675,8 +988,14 @@
     renderSnippets();
   }
 
-  // Track which panel mode is active: 'snippets' | 'chat'
+  // Track which panel mode is active: 'snippets' | 'tasks' | 'chat'
   let sidebarMode = 'snippets';
+
+  // Task editor sub-state: null = list view; taskId string = editor open for that task
+  let taskEditingId = null;
+
+  // Debounce timer for task editor auto-save
+  let taskEditorSaveTimer = null;
 
   // Create the toggle pill
   function createToggle() {
@@ -819,6 +1138,7 @@
     if (mode === 'snippets') {
       renderSidebar();
     } else if (mode === 'tasks') {
+      taskEditingId = null; // always return to list when toggling the panel
       renderTaskPanel();
     } else {
       renderChatPanel();
@@ -1546,6 +1866,7 @@
     const task = {
       id: Date.now().toString(),
       text: text.trim(),
+      notes: '',
       sourceUrl: window.location.href,
       sourceTitle: document.title || window.location.hostname,
       sourceChatId: null,
@@ -1568,6 +1889,7 @@
     const task = {
       id: Date.now().toString(),
       text: text.trim(),
+      notes: '',
       sourceUrl: null,
       sourceTitle: chat ? (chat.title || 'AI Chat') : 'AI Chat',
       sourceChatId: chatId || null,

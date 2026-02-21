@@ -2633,3 +2633,266 @@
   flex-shrink: 0;
   margin: 0 2px;
 }
+
+/* ═══════════════════════════════════════════════════════
+   TASK EDITOR — Notion / Granola style
+   ═══════════════════════════════════════════════════════ */
+
+/* Header bar: back button + done toggle */
+.noodle-task-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 10px;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+  background: #fff;
+}
+
+/* ← Tasks back button */
+.noodle-task-editor-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: #999;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.13s, background 0.13s;
+  font-family: inherit;
+  line-height: 1;
+}
+
+.noodle-task-editor-back-btn:hover {
+  color: #333;
+  background: #f2f2f2;
+}
+
+/* Done toggle circle */
+.noodle-task-editor-check {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #e0e0e0;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: border-color 0.15s, background 0.15s;
+  padding: 0;
+}
+
+.noodle-task-editor-check:hover {
+  border-color: #f59e0b;
+  background: #fef3c7;
+}
+
+.noodle-task-editor-check.done {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #fff;
+}
+
+/* Scrollable body */
+.noodle-task-editor-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 22px 48px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Title wrapper */
+.noodle-task-editor-title-wrap {
+  margin-bottom: 14px;
+}
+
+/* Large editable title */
+.noodle-task-editor-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111;
+  line-height: 1.3;
+  outline: none;
+  border: none;
+  width: 100%;
+  word-break: break-word;
+  white-space: pre-wrap;
+  min-height: 1.3em;
+  caret-color: #f59e0b;
+  font-family: inherit;
+}
+
+/* CSS placeholder — no JS needed */
+.noodle-task-editor-title:empty::before {
+  content: attr(data-placeholder);
+  color: #ccc;
+  font-weight: 400;
+  pointer-events: none;
+}
+
+/* Metadata chips row */
+.noodle-task-editor-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+/* Source chip — clickable */
+.noodle-task-editor-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #888;
+  background: #f4f4f4;
+  border-radius: 5px;
+  padding: 3px 8px 3px 6px;
+  cursor: pointer;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.13s, color 0.13s;
+  user-select: none;
+}
+
+.noodle-task-editor-source-chip:hover {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.noodle-task-editor-source-chip svg { flex-shrink: 0; }
+
+.noodle-task-editor-source-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Date chip — non-interactive */
+.noodle-task-editor-date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #bbb;
+  background: #f9f9f9;
+  border-radius: 5px;
+  padding: 3px 8px 3px 6px;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Divider between meta and notes */
+.noodle-task-editor-divider {
+  height: 1px;
+  background: #f0f0f0;
+  margin-bottom: 18px;
+  flex-shrink: 0;
+}
+
+/* Notes contenteditable */
+.noodle-task-editor-notes {
+  flex: 1;
+  outline: none;
+  min-height: 200px;
+  font-size: 14px;
+  color: #333;
+  line-height: 1.7;
+  word-break: break-word;
+  caret-color: #f59e0b;
+  font-family: inherit;
+}
+
+/* Placeholder shown when notes are empty */
+.noodle-task-editor-notes:empty::before {
+  content: attr(data-placeholder);
+  color: #ccc;
+  pointer-events: none;
+  display: block;
+}
+
+/* ── Rich text styles inside notes ── */
+
+.noodle-task-editor-notes strong {
+  font-weight: 700;
+  color: #111;
+}
+
+.noodle-task-editor-notes em {
+  font-style: italic;
+  color: #444;
+}
+
+.noodle-task-editor-notes h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111;
+  margin: 18px 0 6px;
+  line-height: 1.3;
+}
+
+.noodle-task-editor-notes h3:first-child {
+  margin-top: 0;
+}
+
+.noodle-task-editor-notes ul,
+.noodle-task-editor-notes ol {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+
+.noodle-task-editor-notes li {
+  margin-bottom: 4px;
+  line-height: 1.6;
+}
+
+.noodle-task-editor-notes ul ul,
+.noodle-task-editor-notes ol ol,
+.noodle-task-editor-notes ul ol,
+.noodle-task-editor-notes ol ul {
+  margin-top: 3px;
+  margin-bottom: 3px;
+}
+
+.noodle-task-editor-notes p {
+  margin: 0 0 10px;
+}
+
+.noodle-task-editor-notes p:last-child {
+  margin-bottom: 0;
+}
+
+.noodle-task-editor-notes a {
+  color: #6366f1;
+  text-decoration: underline;
+}
+
+/* Notes-dot on task list items */
+.noodle-task-notes-dot {
+  font-size: 12px;
+  color: #f59e0b;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* Make task title text feel clickable */
+.noodle-task-text {
+  cursor: pointer;
+}
+
+.noodle-task-text:hover {
+  color: #111;
+  text-decoration: underline;
+  text-decoration-color: #e5e5e5;
+}
