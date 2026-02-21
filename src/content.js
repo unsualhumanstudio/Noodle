@@ -71,6 +71,20 @@
     'Almost there, probably...',
   ];
 
+  // Nerdy research-specific status messages (shown during web search tool calls)
+  const AI_RESEARCH_STATUS_MESSAGES = [
+    (q) => `Dispatching search bots into the wild for "${q}"...`,
+    (q) => `Crawling the internet so you don't have to: "${q}"...`,
+    (q) => `Asking the web about "${q}" very politely...`,
+    (q) => `Unleashing spiders on "${q}"...`,
+    (q) => `Googling "${q}" but make it academic...`,
+    (q) => `Scouring 5 billion pages for "${q}"...`,
+    (q) => `Yelling "${q}" into the search void...`,
+    (q) => `Bribing the algorithm for "${q}"...`,
+    (q) => `Speed-reading the internet about "${q}"...`,
+    (q) => `Triangulating signal from noise for "${q}"...`,
+  ];
+
   // Initialize
   function init() {
     try {
@@ -2763,7 +2777,6 @@ You also have access to a web search tool. Use it proactively to find current, r
   function clearStatusIndicator() {
     if (aiStatusInterval) { clearInterval(aiStatusInterval); aiStatusInterval = null; }
     document.getElementById('noodle-typing-indicator')?.remove();
-    document.getElementById('noodle-researching-indicator')?.remove();
     const sendBtn = sidebar?.querySelector('.noodle-ai-send-btn');
     if (sendBtn) {
       sendBtn.classList.remove('stopping');
@@ -2776,7 +2789,7 @@ You also have access to a web search tool. Use it proactively to find current, r
   function handleStreamStart(requestId) {
     if (requestId !== aiCurrentRequestId) return;
 
-    // Remove status / researching indicators and clear the rotation interval
+    // Remove status indicator and clear the rotation interval
     clearStatusIndicator();
 
     // Note: aiWebCitations may have already been populated by noodleAiWebCitations message
@@ -2870,22 +2883,30 @@ You also have access to a web search tool. Use it proactively to find current, r
   function handleToolCall(requestId, toolName, query) {
     if (requestId !== aiCurrentRequestId) return;
 
-    // Remove status indicator if present (research mode shows its own indicator below)
-    document.getElementById('noodle-typing-indicator')?.remove();
+    // Pick a fun research-flavored message for this query and update the status indicator in-place
+    const msgFn = AI_RESEARCH_STATUS_MESSAGES[Math.floor(Math.random() * AI_RESEARCH_STATUS_MESSAGES.length)];
+    const msg = msgFn(query || 'the web');
 
-    const existing = document.getElementById('noodle-researching-indicator');
-    if (existing) return; // already showing
-
-    const messagesEl = sidebar?.querySelector('.noodle-ai-messages');
-    if (messagesEl) {
-      const spinSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`;
-      messagesEl.insertAdjacentHTML('beforeend', `
-        <div class="noodle-ai-researching" id="noodle-researching-indicator">
-          <span class="noodle-ai-researching-icon">${spinSVG}</span>
-          <span>Searching: ${escapeHtml(query || 'web')}…</span>
-        </div>
-      `);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+    const statusEl = document.querySelector('#noodle-typing-indicator .noodle-ai-status-text');
+    if (statusEl) {
+      // Fade-swap to the new research message
+      statusEl.classList.add('fade-out');
+      setTimeout(() => {
+        statusEl.textContent = msg;
+        statusEl.classList.remove('fade-out');
+      }, 200);
+    } else {
+      // Status indicator was removed somehow — re-insert it
+      const messagesEl = sidebar?.querySelector('.noodle-ai-messages');
+      if (messagesEl) {
+        messagesEl.insertAdjacentHTML('beforeend', `
+          <div class="noodle-ai-status-indicator" id="noodle-typing-indicator">
+            <span class="noodle-ai-status-dot"></span>
+            <span class="noodle-ai-status-text">${escapeHtml(msg)}</span>
+          </div>
+        `);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
     }
   }
 
