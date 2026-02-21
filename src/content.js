@@ -1613,7 +1613,7 @@
       const hasApiKey = !!result.noodleApiKey;
       aiHasTavilyKey = !!result.noodleTavilyKey;
       if (!aiHasTavilyKey) aiResearchMode = false; // can't be on without key
-      aiSelectedFolderIds = ['all'];
+      aiSelectedFolderIds = []; // context is now added via @mention, not auto-selected
       aiHistoryOpen = false;
 
       const currentChat = aiCurrentChatId
@@ -1727,7 +1727,7 @@
             ).join('')}
           </div>
         </div>
-        ${inputBoxHTML('/command or ask about your snippets...')}
+        ${inputBoxHTML('/command, @project, or ask anything...')}
       </div>
     `;
   }
@@ -2317,10 +2317,19 @@
   function handleAiSubmit(inputEl) {
     if (!inputEl || aiIsStreaming) return;
 
-    // If a command chip is active, prepend it to form the full text for parsing
     const chipRow = inputEl.closest('.noodle-ai-input-box')?.querySelector('.noodle-ai-cmd-chip-row');
+
+    // Read command chip
     const activeChip = chipRow?.querySelector('.noodle-ai-active-cmd-chip');
     const chipCmd = activeChip?.dataset.command || '';
+
+    // Read @mention chips and update aiSelectedFolderIds accordingly
+    const mentionIds = getActiveMentionFolderIds(inputEl);
+    if (mentionIds.length > 0) {
+      aiSelectedFolderIds = mentionIds; // could include 'all'
+    } else {
+      aiSelectedFolderIds = []; // no context unless mentioned
+    }
 
     const rawText = inputEl.value.trim();
     if (!chipCmd && !rawText) return;
@@ -2645,12 +2654,95 @@ You also have access to a web search tool. Use it proactively to find current, r
     inputEl.focus();
   }
 
+  // --- @ mention helpers ---
+
+  function buildAtMentionHTML(matchingFolders) {
+    const folderIcon = `<svg class="noodle-cmd-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
+
+    // Always include an "All snippets" option
+    const allOption = `
+      <div class="noodle-ai-command-item" data-folder-id="all" data-folder-name="All snippets">
+        ${folderIcon}
+        <div class="noodle-ai-command-text">
+          <span class="noodle-ai-command-name">@All snippets</span>
+          <span class="noodle-ai-command-desc">${snippets.length} snippets across all projects</span>
+        </div>
+      </div>
+    `;
+
+    const folderItems = matchingFolders.map(f => {
+      const count = snippets.filter(s => s.folderId === f.id).length;
+      return `
+        <div class="noodle-ai-command-item" data-folder-id="${f.id}" data-folder-name="${escapeHtml(f.name)}">
+          ${folderIcon}
+          <div class="noodle-ai-command-text">
+            <span class="noodle-ai-command-name">@${escapeHtml(f.name)}</span>
+            <span class="noodle-ai-command-desc">${count} snippet${count !== 1 ? 's' : ''}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return allOption + folderItems;
+  }
+
+  function addMentionChip(inputEl, folderId, folderName) {
+    const chipRow = inputEl.closest('.noodle-ai-input-box')?.querySelector('.noodle-ai-cmd-chip-row');
+    if (!chipRow) return;
+
+    // Avoid duplicate chips for the same folder
+    if (chipRow.querySelector(`.noodle-ai-active-mention-chip[data-folder-id="${folderId}"]`)) return;
+
+    const chip = document.createElement('span');
+    chip.className = 'noodle-ai-active-mention-chip';
+    chip.dataset.folderId = folderId;
+    chip.innerHTML = `@${escapeHtml(folderName)}<button class="noodle-ai-active-cmd-remove" title="Remove">&times;</button>`;
+
+    chip.querySelector('.noodle-ai-active-cmd-remove').addEventListener('click', () => {
+      chip.remove();
+    });
+
+    chipRow.appendChild(chip);
+  }
+
+  function getActiveMentionFolderIds(inputEl) {
+    const chipRow = inputEl?.closest('.noodle-ai-input-box')?.querySelector('.noodle-ai-cmd-chip-row');
+    if (!chipRow) return [];
+    return Array.from(chipRow.querySelectorAll('.noodle-ai-active-mention-chip'))
+      .map(c => c.dataset.folderId);
+  }
+
+  // --- Input change handler ---
+
   function handleAiInputChange(inputEl) {
     const text = inputEl.value;
     const commandsContainer = sidebar?.querySelector('.noodle-ai-commands-wrap');
     if (!commandsContainer) return;
 
-    // If a chip is already set, don't reopen the command picker
+    // Detect @ trigger — find the last @ in the text
+    const atMatch = text.match(/@([\w\s]*)$/);
+    if (atMatch) {
+      const partial = atMatch[1].toLowerCase();
+      const matchingFolders = folders.filter(f =>
+        f.name.toLowerCase().includes(partial)
+      );
+      commandsContainer.innerHTML = buildAtMentionHTML(matchingFolders);
+      commandsContainer.style.display = '';
+      // Wire up folder selection
+      commandsContainer.querySelectorAll('.noodle-ai-command-item[data-folder-id]').forEach(item => {
+        item.addEventListener('click', () => {
+          // Strip the @partial from the textarea
+          inputEl.value = text.replace(/@[\w\s]*$/, '');
+          commandsContainer.style.display = 'none';
+          addMentionChip(inputEl, item.dataset.folderId, item.dataset.folderName);
+          inputEl.focus();
+        });
+      });
+      return;
+    }
+
+    // Detect / trigger for commands
+    // If a command chip is already set, suppress command picker
     const chipRow = inputEl.closest('.noodle-ai-input-box')?.querySelector('.noodle-ai-cmd-chip-row');
     if (chipRow?.querySelector('.noodle-ai-active-cmd-chip')) {
       commandsContainer.style.display = 'none';
@@ -2682,7 +2774,7 @@ You also have access to a web search tool. Use it proactively to find current, r
   }
 
   function attachCommandItemListeners(inputEl, container) {
-    container.querySelectorAll('.noodle-ai-command-item').forEach(item => {
+    container.querySelectorAll('.noodle-ai-command-item[data-command]').forEach(item => {
       item.addEventListener('click', () => {
         container.style.display = 'none';
         promoteCommandToChip(inputEl, item.dataset.command);

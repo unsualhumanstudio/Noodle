@@ -1147,6 +1147,30 @@
   color: #2563eb;
 }
 
+/* @mention project chip — grey/green, distinct from blue command chip */
+.noodle-ai-active-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px 2px 8px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.noodle-ai-active-mention-chip .noodle-ai-active-cmd-remove {
+  color: #86efac;
+}
+
+.noodle-ai-active-mention-chip .noodle-ai-active-cmd-remove:hover {
+  color: #16a34a;
+}
+
 .noodle-ai-input {
   width: 100%;
   padding: 12px 14px 6px;
