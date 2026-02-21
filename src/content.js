@@ -44,6 +44,7 @@
   let aiResearchMode = false;    // whether research toggle is on
   let aiHasTavilyKey = false;   // whether user has configured Tavily key
   let aiWebCitations = [];       // [{index, url, title, favicon}] for current response
+  let aiPageMode = false;        // whether "read page" toggle is on
 
   // Initialize
   function init() {
@@ -1747,6 +1748,11 @@
                 ` : ''}
               </div>
               <div class="noodle-ai-footer-right">
+                <button class="noodle-ai-page-btn ${aiPageMode ? 'active' : ''}"
+                  title="${aiPageMode ? 'Reading page (click to turn off)' : 'Read current page for context'}">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+                  <span class="noodle-page-label">${aiPageMode ? 'Page on' : 'Page'}</span>
+                </button>
                 <button class="noodle-ai-research-btn ${aiResearchMode ? 'active' : ''} ${!aiHasTavilyKey ? 'disabled' : ''}"
                   title="${aiHasTavilyKey ? (aiResearchMode ? 'Research on (click to turn off)' : 'Research off (click to turn on)') : 'Add Tavily API key in Settings to enable research'}"
                   ${!aiHasTavilyKey ? 'disabled' : ''}>
@@ -2188,6 +2194,18 @@
     // Context: + button opens/closes the dropdown menu
     attachContextListeners();
 
+    // Page toggle
+    root.querySelector('.noodle-ai-page-btn')?.addEventListener('click', () => {
+      aiPageMode = !aiPageMode;
+      const btn = root.querySelector('.noodle-ai-page-btn');
+      if (btn) {
+        btn.classList.toggle('active', aiPageMode);
+        const label = btn.querySelector('.noodle-page-label');
+        if (label) label.textContent = aiPageMode ? 'Page on' : 'Page';
+        btn.title = aiPageMode ? 'Reading page (click to turn off)' : 'Read current page for context';
+      }
+    });
+
     // Research toggle
     root.querySelector('.noodle-ai-research-btn')?.addEventListener('click', () => {
       if (!aiHasTavilyKey) return;
@@ -2486,12 +2504,77 @@
     return { name: cmdName, arg };
   }
 
+  // Extract the main readable text from the current page, skipping nav/scripts/noodle UI
+  function extractPageContent() {
+    const PAGE_CHAR_LIMIT = 8000;
+
+    // Tags to skip entirely
+    const SKIP_TAGS = new Set([
+      'script', 'style', 'noscript', 'iframe', 'svg', 'canvas',
+      'nav', 'header', 'footer', 'aside', 'form', 'button', 'select',
+      'input', 'textarea', 'option', 'dialog', 'menu'
+    ]);
+
+    // Prefer article/main content when available
+    const candidates = [
+      document.querySelector('article'),
+      document.querySelector('[role="main"]'),
+      document.querySelector('main'),
+      document.querySelector('.post-content, .entry-content, .article-body, .story-body'),
+      document.body
+    ];
+    const root = candidates.find(el => el != null);
+
+    function walk(node) {
+      // Skip our own UI
+      if (node.id === 'noodle-root') return '';
+      if (node.getAttribute && node.getAttribute('data-noodle')) return '';
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+      const tag = node.tagName.toLowerCase();
+      if (SKIP_TAGS.has(tag)) return '';
+
+      // Skip hidden elements
+      const style = window.getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden') return '';
+
+      let text = '';
+      for (const child of node.childNodes) {
+        text += walk(child);
+        if (text.length > PAGE_CHAR_LIMIT) break;
+      }
+
+      // Add spacing around block-level elements
+      const BLOCK_TAGS = new Set(['p','div','section','h1','h2','h3','h4','h5','h6','li','tr','blockquote','pre']);
+      if (BLOCK_TAGS.has(tag)) text = '\n' + text.trim() + '\n';
+
+      return text;
+    }
+
+    const raw = walk(root)
+      .replace(/\n{3,}/g, '\n\n')  // collapse excess blank lines
+      .trim()
+      .slice(0, PAGE_CHAR_LIMIT);
+
+    return raw;
+  }
+
   function buildSystemPrompt(command) {
     let basePrompt = `You are Noodle AI, a helpful assistant that analyzes text snippets saved by the user from web pages. You help users understand, summarize, and find patterns in their saved research.
 
 When referencing snippets, place ONLY the bare citation marker [1], [2], [3] etc. at the end of the relevant sentence — never inline mid-sentence and never surrounded by or mixed with the snippet's own text. The marker alone is the citation; do not quote or paraphrase the snippet inline. You can group multiple citations like [1][2]. These render as clickable superscript footnotes with a Sources section at the bottom.
 
 Keep responses concise and well-structured. Use markdown-style formatting: **bold** for emphasis, bullet lists with - prefix, numbered lists with 1. prefix. Write flowing prose — never paste, quote, or repeat snippet text inline.`;
+
+    if (aiPageMode) {
+      basePrompt += `
+
+The user has also shared the full text of the page they are currently viewing (see <page_context> below). Use it as additional context when answering — you may reference it directly but do not need to cite it with markers.`;
+    }
 
     if (aiResearchMode) {
       basePrompt += `
@@ -2547,13 +2630,28 @@ You also have access to a web search tool. Use it proactively to find current, r
       });
     }
 
+    // Page context — appended when Page mode is on
+    let pageBlock = '';
+    if (aiPageMode) {
+      const pageText = extractPageContent();
+      if (pageText) {
+        const pageTitle = document.title || window.location.href;
+        pageBlock = `<page_context url="${window.location.href}" title="${pageTitle}">\n${pageText}\n</page_context>`;
+      }
+    }
+
     const apiMessages = [];
 
     chat.messages.forEach((msg, index) => {
       if (msg.role === 'user') {
         let content = msg.content;
-        if (index === 0 && contextBlock) {
-          content = contextBlock + '\n---\n\nUser question: ' + content;
+        if (index === 0) {
+          const parts = [];
+          if (contextBlock) parts.push(contextBlock);
+          if (pageBlock) parts.push(pageBlock);
+          if (parts.length > 0) {
+            content = parts.join('\n\n') + '\n\n---\n\nUser question: ' + content;
+          }
         }
         apiMessages.push({ role: 'user', content });
       } else {

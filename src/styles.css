@@ -2058,6 +2058,44 @@
   flex-shrink: 0;
 }
 
+/* Page toggle button — mirrors research button style */
+.noodle-ai-page-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  color: #aaa;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.noodle-ai-page-btn:hover {
+  color: #555;
+  background: #f0f0f0;
+}
+
+.noodle-ai-page-btn.active {
+  color: #7c3aed;
+  background: #f5f3ff;
+}
+
+.noodle-ai-page-btn.active:hover {
+  color: #6d28d9;
+  background: #ede9fe;
+}
+
+.noodle-page-label {
+  font-size: 11px;
+  line-height: 1;
+}
+
 /* Research toggle button */
 .noodle-ai-research-btn {
   display: flex;
