@@ -1,5 +1,8 @@
 // Noodle - Background Service Worker
 
+// Registry of active AbortControllers keyed by requestId — lets us cancel in-flight fetches
+const activeControllers = {};
+
 // Sync storage flag with actual permission state on startup
 chrome.permissions.contains({ origins: ['<all_urls>'] }, (hasPermission) => {
   chrome.storage.local.set({ noodleAllSites: hasPermission });
@@ -45,6 +48,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'noodleAiCancel') {
+    const ctrl = activeControllers[message.requestId];
+    if (ctrl) {
+      ctrl.abort();
+      delete activeControllers[message.requestId];
+    }
+    return false;
+  }
+
   if (message.type === 'noodleAiRequest') {
     handleAiRequest(message, sender);
     return true;
@@ -74,6 +86,9 @@ async function handleAiRequest(message, sender) {
     return;
   }
 
+  const controller = new AbortController();
+  activeControllers[requestId] = controller;
+
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -89,7 +104,8 @@ async function handleAiRequest(message, sender) {
         system: systemPrompt,
         messages: messages,
         stream: true
-      })
+      }),
+      signal: controller.signal
     });
 
     if (!response.ok) {
@@ -139,17 +155,24 @@ async function handleAiRequest(message, sender) {
       }
     }
 
+    delete activeControllers[requestId];
     chrome.tabs.sendMessage(tabId, {
       type: 'noodleAiStreamEnd',
       requestId
     });
 
   } catch (err) {
-    chrome.tabs.sendMessage(tabId, {
-      type: 'noodleAiStreamError',
-      requestId,
-      error: err.message
-    });
+    delete activeControllers[requestId];
+    // AbortError means the user stopped generation — send a clean end, not an error
+    if (err.name === 'AbortError') {
+      chrome.tabs.sendMessage(tabId, { type: 'noodleAiStreamEnd', requestId });
+    } else {
+      chrome.tabs.sendMessage(tabId, {
+        type: 'noodleAiStreamError',
+        requestId,
+        error: err.message
+      });
+    }
   }
 }
 
@@ -195,6 +218,10 @@ async function handleResearchRequest(message, sender) {
     }
   }];
 
+  // AbortController for this request
+  const controller = new AbortController();
+  activeControllers[requestId] = controller;
+
   // Accumulated web citations: [{index, url, title, favicon}]
   const webCitations = [];
   let webCitIndex = 1;
@@ -227,10 +254,16 @@ async function handleResearchRequest(message, sender) {
           // On last round, omit tools so Claude is forced to respond with text
           ...(isLastRound ? {} : { tools }),
           stream: false
-        })
+        }),
+        signal: controller.signal
       });
     } catch (err) {
-      chrome.tabs.sendMessage(tabId, { type: 'noodleAiStreamError', requestId, error: err.message });
+      delete activeControllers[requestId];
+      if (err.name === 'AbortError') {
+        chrome.tabs.sendMessage(tabId, { type: 'noodleAiStreamEnd', requestId });
+      } else {
+        chrome.tabs.sendMessage(tabId, { type: 'noodleAiStreamError', requestId, error: err.message });
+      }
       return;
     }
 
@@ -344,10 +377,13 @@ async function handleResearchRequest(message, sender) {
       }
     }
 
+    delete activeControllers[requestId];
     chrome.tabs.sendMessage(tabId, { type: 'noodleAiStreamEnd', requestId });
     return;
   }
 
+  // Exhausted all rounds without end_turn — clean up
+  delete activeControllers[requestId];
 }
 
 // Inject content script into a tab

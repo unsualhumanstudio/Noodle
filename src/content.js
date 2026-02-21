@@ -45,6 +45,31 @@
   let aiHasTavilyKey = false;   // whether user has configured Tavily key
   let aiWebCitations = [];       // [{index, url, title, favicon}] for current response
   let aiPageMode = false;        // whether "read page" toggle is on
+  let aiStatusInterval = null;   // interval ID for rotating status messages
+
+  // Nerdy status messages shown while waiting for a response
+  const AI_STATUS_MESSAGES = [
+    'Warming up the neurons...',
+    'Consulting the silicon oracle...',
+    'Parsing your thoughts at 3GHz...',
+    'Summoning knowledge from the void...',
+    'Untangling the semantic spaghetti...',
+    'Running inference at ludicrous speed...',
+    'Cross-referencing with the hive mind...',
+    'Compiling wisdom into human-readable format...',
+    'Doing math you didn\'t ask for...',
+    'Vectorizing your vibes...',
+    'Searching 1.8 trillion parameters...',
+    'Converting coffee to answers...',
+    'Performing gradient descent on your question...',
+    'Asking the attention heads nicely...',
+    'Consulting the embedding space...',
+    'Defragmenting the knowledge graph...',
+    'Resolving ambiguity with 97.3% confidence...',
+    'Tokenizing at the speed of thought...',
+    'Hallucinating responsibly...',
+    'Almost there, probably...',
+  ];
 
   // Initialize
   function init() {
@@ -2162,7 +2187,15 @@
     const sendBtn = root.querySelector('.noodle-ai-send-btn');
     const input = root.querySelector('.noodle-ai-input');
 
-    sendBtn?.addEventListener('click', () => handleAiSubmit(input));
+    sendBtn?.addEventListener('click', () => {
+      if (sendBtn.classList.contains('stopping')) {
+        // Stop generation: cancel in background, commit whatever was streamed
+        chrome.runtime.sendMessage({ type: 'noodleAiCancel', requestId: aiCurrentRequestId });
+        handleStreamEnd(aiCurrentRequestId);
+      } else {
+        handleAiSubmit(input);
+      }
+    });
     input?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -2673,18 +2706,42 @@ You also have access to a web search tool. Use it proactively to find current, r
 
     const messagesEl = sidebar?.querySelector('.noodle-ai-messages');
     if (messagesEl) {
+      const firstMsg = AI_STATUS_MESSAGES[Math.floor(Math.random() * AI_STATUS_MESSAGES.length)];
       messagesEl.insertAdjacentHTML('beforeend', `
-        <div class="noodle-ai-typing" id="noodle-typing-indicator">
-          <span class="noodle-ai-typing-dot"></span>
-          <span class="noodle-ai-typing-dot"></span>
-          <span class="noodle-ai-typing-dot"></span>
+        <div class="noodle-ai-status-indicator" id="noodle-typing-indicator">
+          <span class="noodle-ai-status-dot"></span>
+          <span class="noodle-ai-status-text">${firstMsg}</span>
         </div>
       `);
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
+    // Rotate status messages every 2.5s
+    let statusIdx = 1;
+    const usedMessages = [AI_STATUS_MESSAGES[0]];
+    aiStatusInterval = setInterval(() => {
+      const statusEl = document.querySelector('#noodle-typing-indicator .noodle-ai-status-text');
+      if (!statusEl) { clearInterval(aiStatusInterval); return; }
+      // Pick a message not recently used
+      const remaining = AI_STATUS_MESSAGES.filter(m => !usedMessages.includes(m));
+      const pool = remaining.length > 0 ? remaining : AI_STATUS_MESSAGES;
+      const next = pool[Math.floor(Math.random() * pool.length)];
+      usedMessages.push(next);
+      if (usedMessages.length > 5) usedMessages.shift();
+      statusEl.classList.add('fade-out');
+      setTimeout(() => {
+        statusEl.textContent = next;
+        statusEl.classList.remove('fade-out');
+      }, 200);
+    }, 2500);
+
+    // Swap send → stop button
     const sendBtn = sidebar?.querySelector('.noodle-ai-send-btn');
-    if (sendBtn) sendBtn.disabled = true;
+    if (sendBtn) {
+      sendBtn.classList.add('stopping');
+      sendBtn.title = 'Stop generation';
+      sendBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>`;
+    }
 
     // Commands with requiresResearch always use the research path (Tavily),
     // regardless of whether the research toggle is currently on
@@ -2699,12 +2756,25 @@ You also have access to a web search tool. Use it proactively to find current, r
     });
   }
 
+  // Stop rotating status messages and restore the send button to its default state
+  function clearStatusIndicator() {
+    if (aiStatusInterval) { clearInterval(aiStatusInterval); aiStatusInterval = null; }
+    document.getElementById('noodle-typing-indicator')?.remove();
+    document.getElementById('noodle-researching-indicator')?.remove();
+    const sendBtn = sidebar?.querySelector('.noodle-ai-send-btn');
+    if (sendBtn) {
+      sendBtn.classList.remove('stopping');
+      sendBtn.disabled = false;
+      sendBtn.title = 'Send';
+      sendBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" d="M5.5 13L18 6m-1.75 17.5h.25a72.7 72.7 0 0 1 6.504-21.962L23.26 1L23 .74l-.538.256A72.7 72.7 0 0 1 .5 7.5v.25l5 5v7.75h.25l1.774-1.69a12 12 0 0 1 2.313-1.723z" stroke-width="1"/></svg>`;
+    }
+  }
+
   function handleStreamStart(requestId) {
     if (requestId !== aiCurrentRequestId) return;
 
-    // Remove typing / researching indicators
-    document.getElementById('noodle-typing-indicator')?.remove();
-    document.getElementById('noodle-researching-indicator')?.remove();
+    // Remove status / researching indicators and clear the rotation interval
+    clearStatusIndicator();
 
     // Note: aiWebCitations may have already been populated by noodleAiWebCitations message
     // (sent just before noodleAiStreamStart in research mode) — do NOT reset here.
@@ -2767,8 +2837,7 @@ You also have access to a web search tool. Use it proactively to find current, r
     aiStreamBuffer = '';
     aiCurrentRequestId = null;
 
-    const sendBtn = sidebar?.querySelector('.noodle-ai-send-btn');
-    if (sendBtn) sendBtn.disabled = false;
+    clearStatusIndicator();
 
     const input = sidebar?.querySelector('.noodle-ai-input');
     if (input) input.focus();
@@ -2777,8 +2846,7 @@ You also have access to a web search tool. Use it proactively to find current, r
   function handleStreamError(requestId, error) {
     if (requestId !== aiCurrentRequestId) return;
 
-    const indicator = document.getElementById('noodle-typing-indicator');
-    if (indicator) indicator.remove();
+    clearStatusIndicator();
 
     const messagesEl = sidebar?.querySelector('.noodle-ai-messages');
     if (messagesEl) {
@@ -2793,17 +2861,14 @@ You also have access to a web search tool. Use it proactively to find current, r
     aiIsStreaming = false;
     aiStreamBuffer = '';
     aiCurrentRequestId = null;
-
-    const sendBtn = sidebar?.querySelector('.noodle-ai-send-btn');
-    if (sendBtn) sendBtn.disabled = false;
+    // clearStatusIndicator() already called above restores the send button
   }
 
   function handleToolCall(requestId, toolName, query) {
     if (requestId !== aiCurrentRequestId) return;
 
-    // Remove typing indicator if present, replace with researching indicator
-    const indicator = document.getElementById('noodle-typing-indicator');
-    if (indicator) indicator.remove();
+    // Remove status indicator if present (research mode shows its own indicator below)
+    document.getElementById('noodle-typing-indicator')?.remove();
 
     const existing = document.getElementById('noodle-researching-indicator');
     if (existing) return; // already showing
