@@ -646,21 +646,89 @@
   padding: 10px 12px;
   border-top: 1px solid #e5e5e5;
   background: white;
+  display: flex;
+  gap: 6px;
+}
+
+/* New snippet button — primary action in footer */
+.noodle-new-snippet-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.noodle-new-snippet-btn:hover {
+  background: #333;
 }
 
 .settings-btn {
-  width: 100%;
-  padding: 8px;
+  padding: 8px 10px;
   border: 1px solid #e0e0e0;
   border-radius: 6px;
   background: white;
   font-size: 12px;
   color: #666;
   cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
 }
 
 .settings-btn:hover {
   background: #f5f5f5;
+}
+
+/* New snippet dialog */
+.noodle-new-snippet-dialog {
+  width: 300px;
+}
+
+.noodle-new-snippet-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.noodle-new-snippet-color-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.1s;
+  flex-shrink: 0;
+}
+
+.noodle-new-snippet-color-btn.blue   { background: var(--highlight-blue); }
+.noodle-new-snippet-color-btn.green  { background: var(--highlight-green); }
+.noodle-new-snippet-color-btn.coral  { background: var(--highlight-coral); }
+.noodle-new-snippet-color-btn.yellow { background: var(--highlight-yellow); }
+
+.noodle-new-snippet-color-btn:hover {
+  transform: scale(1.1);
+}
+
+.noodle-new-snippet-color-btn.selected {
+  border-color: #333;
+  transform: scale(1.15);
+}
+
+.noodle-new-snippet-color-label {
+  font-size: 12px;
+  color: #888;
+  margin-left: 2px;
 }
 
 /* Toggle button */
@@ -2604,6 +2672,49 @@
 .noodle-task-delete:hover {
   color: #e74c3c;
   background: #fef2f2;
+}
+
+/* ── New task compose row ── */
+.noodle-task-compose-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+
+.noodle-task-compose-row:focus-within {
+  background: #f8f9fa;
+}
+
+.noodle-task-compose-check {
+  flex-shrink: 0;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  border: 2px dashed #d1d5db;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d1d5db;
+}
+
+.noodle-task-compose-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  font-family: inherit;
+  color: #464646;
+  min-width: 0;
+}
+
+.noodle-task-compose-input::placeholder {
+  color: #c0c8d4;
 }
 
 /* ═══════════════════════════════════════════════════════

@@ -472,13 +472,16 @@
     const inboxTasks   = tasks.filter(t => !t.done);
     const archiveTasks = tasks.filter(t => t.done);
     const isInbox      = taskTab === 'inbox';
-    const allForTab    = isInbox ? inboxTasks : archiveTasks;
 
-    // Apply search filter
+    // When searching: show results from ALL tasks (inbox + archive), hide tabs
     const query = taskSearchQuery.trim().toLowerCase();
-    const displayList = query
-      ? allForTab.filter(t => t.text.toLowerCase().includes(query) || (t.sourceTitle || '').toLowerCase().includes(query))
-      : allForTab;
+    const isSearching = query.length > 0;
+    const displayList = isSearching
+      ? tasks.filter(t =>
+          t.text.toLowerCase().includes(query) ||
+          (t.sourceTitle || '').toLowerCase().includes(query)
+        )
+      : (isInbox ? inboxTasks : archiveTasks);
 
     sidebar.innerHTML = `
       <div class="noodle-sidebar-resize-handle"></div>
@@ -491,12 +494,13 @@
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
           <input class="noodle-task-search-input" type="text" placeholder="Search tasks" value="${escapeHtml(taskSearchQuery)}" autocomplete="off" spellcheck="false">
-          ${taskSearchQuery ? `<button class="noodle-task-search-clear" title="Clear search">
+          ${isSearching ? `<button class="noodle-task-search-clear" title="Clear search">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9099aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>` : ''}
         </div>
 
-        <!-- Tab bar -->
+        <!-- Tab bar — hidden while searching -->
+        ${!isSearching ? `
         <div class="noodle-task-tab-row">
           <button class="noodle-task-tab ${isInbox ? 'active' : ''}" data-tab="inbox">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -513,9 +517,19 @@
               <line x1="10" y1="12" x2="14" y2="12"/>
             </svg>
             Archive
-            ${archiveTasks.length > 0 ? `<span class="noodle-task-tab-badge">${archiveTasks.length}</span>` : ''}
           </button>
         </div>
+        ` : ''}
+
+        <!-- New task compose row (only on Inbox, not while searching) -->
+        ${isInbox && !isSearching ? `
+        <div class="noodle-task-compose-row">
+          <div class="noodle-task-compose-check">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          </div>
+          <input class="noodle-task-compose-input" type="text" placeholder="New task..." autocomplete="off" spellcheck="false">
+        </div>
+        ` : ''}
 
         <!-- Task list -->
         <div class="noodle-task-list">
@@ -525,10 +539,10 @@
                 <path d="M9 11l3 3L22 4"/>
                 <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
               </svg>
-              <p>${query ? 'No matching tasks' : (isInbox ? 'No tasks yet' : 'No archived tasks')}</p>
-              ${isInbox && !query ? '<p class="noodle-task-empty-hint">Highlight text on any page and pick the amber Task color, or select text inside AI chat.</p>' : ''}
+              <p>${isSearching ? 'No matching tasks' : (isInbox ? 'No tasks yet' : 'No archived tasks')}</p>
+              ${isInbox && !isSearching ? '<p class="noodle-task-empty-hint">Highlight text on any page and pick the amber Task color, or select text inside AI chat.</p>' : ''}
             </div>
-          ` : displayList.map(task => buildTaskItemHTML(task, isInbox)).join('')}
+          ` : displayList.map(task => buildTaskItemHTML(task, !task.done)).join('')}
         </div>
 
       </div>
@@ -543,7 +557,7 @@
       renderTaskPanel();
     });
     // Re-focus search and restore cursor if user was typing
-    if (taskSearchQuery) {
+    if (isSearching) {
       searchInput?.focus();
       const len = searchInput?.value.length || 0;
       searchInput?.setSelectionRange(len, len);
@@ -555,13 +569,40 @@
       renderTaskPanel();
     });
 
-    // Tab switching
+    // Tab switching (only wired up when tabs are visible)
     sidebar.querySelectorAll('.noodle-task-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         taskTab = tab.dataset.tab;
-        taskSearchQuery = ''; // clear search on tab switch
         renderTaskPanel();
       });
+    });
+
+    // New task compose input — Enter saves, Escape blurs
+    const composeInput = sidebar.querySelector('.noodle-task-compose-input');
+    composeInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const text = composeInput.value.trim();
+        if (!text) return;
+        const task = {
+          id: Date.now().toString(),
+          text,
+          notes: '',
+          status: 'todo',
+          sourceUrl: null,
+          sourceTitle: null,
+          sourceChatId: null,
+          createdAt: new Date().toISOString(),
+          done: false,
+          doneAt: null
+        };
+        tasks.unshift(task);
+        saveTasks();
+        // re-render will clear the input; open editor immediately so user can add notes
+        renderTaskEditor(task.id);
+      } else if (e.key === 'Escape') {
+        composeInput.blur();
+      }
     });
 
     // Task item interactions
@@ -1203,6 +1244,10 @@
       </div>
       <div class="claude-highlighter-snippets"></div>
       <div class="claude-highlighter-footer">
+        <button class="noodle-new-snippet-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          New snippet
+        </button>
         <button class="settings-btn">Settings</button>
       </div>
     `;
@@ -1234,6 +1279,10 @@
       showNewFolderDialog();
     });
 
+    sidebar.querySelector('.noodle-new-snippet-btn').addEventListener('click', () => {
+      showNewSnippetDialog();
+    });
+
     sidebar.querySelector('.settings-btn').addEventListener('click', () => {
       showSettingsDialog();
     });
@@ -1244,6 +1293,77 @@
     setupTooltip(sidebar.querySelector('.settings-btn'), 'Settings');
 
     renderSnippets();
+  }
+
+  function showNewSnippetDialog() {
+    const overlay = document.createElement('div');
+    overlay.className = 'claude-highlighter-dialog-overlay';
+    const colorOptions = ['blue', 'green', 'coral', 'yellow'];
+    let selectedColor = activeFilter !== 'all' ? activeFilter : 'yellow';
+
+    overlay.innerHTML = `
+      <div class="claude-highlighter-dialog noodle-new-snippet-dialog">
+        <h3>New snippet</h3>
+        <textarea class="dialog-input noodle-new-snippet-text" rows="4" placeholder="Type or paste your snippet text…" style="resize:vertical;min-height:80px;font-size:13px;line-height:1.5;"></textarea>
+        <div class="noodle-new-snippet-color-row">
+          ${colorOptions.map(c => `
+            <button class="noodle-new-snippet-color-btn ${c} ${c === selectedColor ? 'selected' : ''}" data-color="${c}" title="${colorLabels[c]}"></button>
+          `).join('')}
+          <span class="noodle-new-snippet-color-label">${colorLabels[selectedColor]}</span>
+        </div>
+        <div class="dialog-actions">
+          <button class="dialog-btn secondary">Cancel</button>
+          <button class="dialog-btn primary">Save snippet</button>
+        </div>
+      </div>
+    `;
+
+    noodleRoot.appendChild(overlay);
+
+    const textarea = overlay.querySelector('.noodle-new-snippet-text');
+    const colorLabel = overlay.querySelector('.noodle-new-snippet-color-label');
+    textarea.focus();
+
+    // Color selection
+    overlay.querySelectorAll('.noodle-new-snippet-color-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedColor = btn.dataset.color;
+        overlay.querySelectorAll('.noodle-new-snippet-color-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        colorLabel.textContent = colorLabels[selectedColor];
+      });
+    });
+
+    // Save
+    overlay.querySelector('.primary').addEventListener('click', () => {
+      const text = textarea.value.trim();
+      if (!text) { textarea.focus(); return; }
+      const snippet = {
+        id: Date.now().toString(),
+        text,
+        color: selectedColor,
+        timestamp: new Date().toISOString(),
+        url: window.location.href,
+        favicon: getFaviconUrl(window.location.href),
+        folderId: activeFolder !== 'all' && activeFolder !== 'unfiled' ? activeFolder : null,
+        note: null
+      };
+      snippets.unshift(snippet);
+      saveSnippets(); // also calls renderSnippets() internally
+      overlay.remove();
+      showToast('Snippet saved ✓');
+    });
+
+    // Cmd/Ctrl+Enter saves too
+    textarea.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        overlay.querySelector('.primary').click();
+      }
+    });
+
+    // Cancel
+    overlay.querySelector('.secondary').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   }
 
   // Track which panel mode is active: 'snippets' | 'tasks' | 'chat'
