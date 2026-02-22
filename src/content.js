@@ -463,69 +463,103 @@
 
   // ─── Task Panel ──────────────────────────────────────────────────────────────
 
+  // Track task search query
+  let taskSearchQuery = '';
+
   function renderTaskPanel() {
     if (!sidebar) return;
 
     const inboxTasks   = tasks.filter(t => !t.done);
     const archiveTasks = tasks.filter(t => t.done);
     const isInbox      = taskTab === 'inbox';
-    const displayList  = isInbox ? inboxTasks : archiveTasks;
+    const allForTab    = isInbox ? inboxTasks : archiveTasks;
+
+    // Apply search filter
+    const query = taskSearchQuery.trim().toLowerCase();
+    const displayList = query
+      ? allForTab.filter(t => t.text.toLowerCase().includes(query) || (t.sourceTitle || '').toLowerCase().includes(query))
+      : allForTab;
 
     sidebar.innerHTML = `
       <div class="noodle-sidebar-resize-handle"></div>
-      <div class="noodle-task-header">
-        <div class="noodle-task-header-left">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="5" width="6" height="6" rx="1"/>
-            <path d="M15 6h4"/>
-            <rect x="3" y="13" width="6" height="6" rx="1"/>
-            <path d="M15 14h4"/>
-            <path d="M15 18h4"/>
+
+      <div class="noodle-task-panel-inner">
+
+        <!-- Search bar -->
+        <div class="noodle-task-search-bar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9099aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <span>Tasks</span>
+          <input class="noodle-task-search-input" type="text" placeholder="Search tasks" value="${escapeHtml(taskSearchQuery)}" autocomplete="off" spellcheck="false">
+          ${taskSearchQuery ? `<button class="noodle-task-search-clear" title="Clear search">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9099aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>` : ''}
         </div>
-        <button class="claude-highlighter-close-btn noodle-task-close-btn">×</button>
-      </div>
 
-      <div class="noodle-task-tabs">
-        <button class="noodle-task-tab ${isInbox ? 'active' : ''}" data-tab="inbox">
-          Inbox
-          ${inboxTasks.length > 0 ? `<span class="noodle-task-tab-count">${inboxTasks.length}</span>` : ''}
-        </button>
-        <button class="noodle-task-tab ${!isInbox ? 'active' : ''}" data-tab="archive">
-          Archive
-          ${archiveTasks.length > 0 ? `<span class="noodle-task-tab-count">${archiveTasks.length}</span>` : ''}
-        </button>
-      </div>
-
-      <div class="noodle-task-list">
-        ${displayList.length === 0 ? `
-          <div class="noodle-task-empty">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 11l3 3L22 4"/>
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        <!-- Tab bar -->
+        <div class="noodle-task-tab-row">
+          <button class="noodle-task-tab ${isInbox ? 'active' : ''}" data-tab="inbox">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
+              <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
             </svg>
-            <p>${isInbox ? 'No tasks yet' : 'No archived tasks'}</p>
-            ${isInbox ? '<p class="noodle-task-empty-hint">Highlight text on any page and choose the amber Task color, or select text in AI chat.</p>' : ''}
-          </div>
-        ` : displayList.map(task => buildTaskItemHTML(task, isInbox)).join('')}
+            Inbox
+            ${inboxTasks.length > 0 ? `<span class="noodle-task-tab-badge">${inboxTasks.length}</span>` : ''}
+          </button>
+          <button class="noodle-task-tab ${!isInbox ? 'active' : ''}" data-tab="archive">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="21 8 21 21 3 21 3 8"/>
+              <rect x="1" y="3" width="22" height="5"/>
+              <line x1="10" y1="12" x2="14" y2="12"/>
+            </svg>
+            Archive
+            ${archiveTasks.length > 0 ? `<span class="noodle-task-tab-badge">${archiveTasks.length}</span>` : ''}
+          </button>
+        </div>
+
+        <!-- Task list -->
+        <div class="noodle-task-list">
+          ${displayList.length === 0 ? `
+            <div class="noodle-task-empty">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 11l3 3L22 4"/>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+              </svg>
+              <p>${query ? 'No matching tasks' : (isInbox ? 'No tasks yet' : 'No archived tasks')}</p>
+              ${isInbox && !query ? '<p class="noodle-task-empty-hint">Highlight text on any page and pick the amber Task color, or select text inside AI chat.</p>' : ''}
+            </div>
+          ` : displayList.map(task => buildTaskItemHTML(task, isInbox)).join('')}
+        </div>
+
       </div>
     `;
 
     setupSidebarResize();
 
-    // Close button
-    sidebar.querySelector('.noodle-task-close-btn').addEventListener('click', () => {
-      sidebar.classList.remove('open');
-      toggle.classList.remove('docked');
-      toggle.style.right = '';
-      toggle.querySelectorAll('.noodle-toggle-btn').forEach(b => b.classList.remove('active'));
+    // Search input
+    const searchInput = sidebar.querySelector('.noodle-task-search-input');
+    searchInput?.addEventListener('input', () => {
+      taskSearchQuery = searchInput.value;
+      renderTaskPanel();
+    });
+    // Re-focus search and restore cursor if user was typing
+    if (taskSearchQuery) {
+      searchInput?.focus();
+      const len = searchInput?.value.length || 0;
+      searchInput?.setSelectionRange(len, len);
+    }
+
+    // Clear search
+    sidebar.querySelector('.noodle-task-search-clear')?.addEventListener('click', () => {
+      taskSearchQuery = '';
+      renderTaskPanel();
     });
 
     // Tab switching
     sidebar.querySelectorAll('.noodle-task-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         taskTab = tab.dataset.tab;
+        taskSearchQuery = ''; // clear search on tab switch
         renderTaskPanel();
       });
     });
@@ -541,35 +575,38 @@
     const sourceLabel = task.sourceChatId
       ? `AI: ${escapeHtml(task.sourceTitle || 'Chat')}`
       : escapeHtml(task.sourceTitle || task.sourceUrl || '');
-    const sourceIcon = task.sourceChatId
-      ? `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
-      : `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
 
-    // Amber dot shown when the task has notes written in the editor
     const hasNotes = task.notes && task.notes.trim() !== '' && task.notes !== '<br>';
 
     return `
       <div class="noodle-task-item ${task.done ? 'done' : ''}" data-task-id="${task.id}">
-        <button class="noodle-task-check" data-task-id="${task.id}" title="${isInbox ? 'Mark done' : 'Restore to inbox'}">
-          ${task.done
-            ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
-            : ''}
-        </button>
-        <div class="noodle-task-body">
-          <p class="noodle-task-text">${escapeHtml(task.text)}</p>
-          <div class="noodle-task-meta">
-            ${hasSource ? `
-              <span class="noodle-task-source" data-task-id="${task.id}" data-source-url="${task.sourceUrl || ''}" data-chat-id="${task.sourceChatId || ''}">
-                ${sourceIcon}
-                <span class="noodle-task-source-label">${sourceLabel}</span>
-              </span>
-            ` : ''}
-            <span class="noodle-task-date">${dateStr}</span>
-            ${hasNotes ? `<span class="noodle-task-notes-dot" title="Has notes">•</span>` : ''}
+        <!-- Left: checkbox + body -->
+        <div class="noodle-task-left">
+          <button class="noodle-task-check" data-task-id="${task.id}" title="${isInbox ? 'Mark done' : 'Restore to inbox'}">
+            ${task.done
+              ? `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+              : ''}
+          </button>
+          <div class="noodle-task-body">
+            <p class="noodle-task-text">${escapeHtml(task.text)}</p>
+            <div class="noodle-task-meta">
+              ${hasSource ? `
+                <span class="noodle-task-source" data-task-id="${task.id}" data-source-url="${task.sourceUrl || ''}" data-chat-id="${task.sourceChatId || ''}">${sourceLabel}</span>
+              ` : ''}
+              <span class="noodle-task-date">${dateStr}</span>
+              ${hasNotes ? `<span class="noodle-task-notes-dot" title="Has notes">•</span>` : ''}
+            </div>
           </div>
         </div>
+        <!-- Right: trash (visible on hover) -->
         <button class="noodle-task-delete" data-task-id="${task.id}" title="Delete task">
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6"/>
+            <path d="M14 11v6"/>
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+          </svg>
         </button>
       </div>
     `;
