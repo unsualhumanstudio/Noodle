@@ -1215,7 +1215,13 @@
       <div class="noodle-sidebar-resize-handle"></div>
       <div class="claude-highlighter-sidebar-header">
         <h2>Noodles</h2>
-        <button class="claude-highlighter-close-btn">×</button>
+        <div class="noodle-header-actions">
+          <button class="noodle-new-snippet-btn" title="New snippet">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            New
+          </button>
+          <button class="claude-highlighter-close-btn">×</button>
+        </div>
       </div>
       <div class="claude-highlighter-filters">
         <div class="claude-highlighter-color-filters">
@@ -1244,10 +1250,6 @@
       </div>
       <div class="claude-highlighter-snippets"></div>
       <div class="claude-highlighter-footer">
-        <button class="noodle-new-snippet-btn">
-          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-          New snippet
-        </button>
         <button class="settings-btn">Settings</button>
       </div>
     `;
@@ -1642,7 +1644,7 @@
       btn.addEventListener('click', (e) => {
         const snippetEl = e.target.closest('.claude-highlighter-snippet');
         const id = snippetEl.dataset.id;
-        showFolderPicker(id, e.target);
+        showFolderPicker(id, btn); // use btn, not e.target (which may be the SVG child)
       });
       setupTooltip(btn, 'Move to folder');
     });
@@ -1699,7 +1701,7 @@
   // Show folder picker dropdown
   function showFolderPicker(snippetId, anchorEl) {
     // Remove any existing picker
-    document.querySelector('.folder-picker')?.remove();
+    noodleRoot.querySelector('.folder-picker')?.remove();
 
     const picker = document.createElement('div');
     picker.className = 'folder-picker';
@@ -1710,7 +1712,7 @@
       <div class="folder-picker-item new-folder">+ New Folder</div>
     `;
 
-    document.body.appendChild(picker);
+    noodleRoot.appendChild(picker);
 
     const rect = anchorEl.getBoundingClientRect();
     const pickerRect = picker.getBoundingClientRect();
@@ -2145,19 +2147,29 @@
     toolbar.style.top = `${top}px`;
     toolbar.style.left = `${left}px`;
 
+    // Snapshot the selection now — before any mousedown/mouseup clears it
+    const savedSelection = currentSelection;
+
     // Add click handlers and tooltips
     toolbar.querySelectorAll('.claude-highlighter-color-btn').forEach(btn => {
+      btn.addEventListener('mousedown', (e) => {
+        // Prevent the mousedown from clearing the selection via handleClickOutside
+        e.preventDefault();
+        e.stopPropagation();
+      });
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         const color = e.currentTarget.dataset.color;
+        // Use the snapshotted selection in case currentSelection was cleared
+        if (!currentSelection && savedSelection) currentSelection = savedSelection;
         saveHighlight(color);
       });
       const color = btn.dataset.color;
       setupTooltip(btn, color === 'task' ? 'Task' : colorLabels[color]);
     });
 
-    // Close toolbar on click outside (with delay to allow button clicks)
+    // Close toolbar on click outside
     setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
     }, 10);
@@ -2166,6 +2178,7 @@
   function handleClickOutside(e) {
     if (!toolbar?.contains(e.target)) {
       removeToolbar();
+      currentSelection = null;
       document.removeEventListener('mousedown', handleClickOutside);
     }
   }
