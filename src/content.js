@@ -1134,62 +1134,79 @@
   }
 
   function attachSourceHoverCards(container) {
-    container.querySelectorAll('.noodle-sourced-seg').forEach(seg => {
-      let card = null;
+    // Use event delegation on the container — more reliable than
+    // per-element mouseenter on spans inside a contenteditable=false div
+    let activeCard = null;
+    let activeSegEl = null;
 
-      seg.addEventListener('mouseenter', () => {
-        try {
-          const source = JSON.parse(seg.dataset.source || '{}');
-          if (!source || !source.preview) return;
+    function showCard(seg) {
+      if (seg === activeSegEl) return; // already showing
+      removeCard();
 
-          card = document.createElement('div');
-          card.className = 'noodle-source-card';
+      const sourceStr = seg.dataset.source;
+      if (!sourceStr) return;
+      let source;
+      try { source = JSON.parse(sourceStr); } catch (e) { return; }
+      if (!source || !source.preview || !source.preview.trim()) return;
 
-          const iconMap = { page: '📄', snippet: '📁', user: '✏️' };
-          const labelMap = {
-            page: 'Page context',
-            snippet: `#${source.folder || 'Folder'}`,
-            user: 'Your notes'
-          };
+      const iconMap = { page: '📄', snippet: '📁', user: '✏️' };
+      const labelMap = {
+        page: 'Page context',
+        snippet: `#${source.folder || 'Folder'}`,
+        user: 'Your notes'
+      };
 
-          card.innerHTML = `
-            <div class="noodle-source-card-label">${iconMap[source.type] || '📎'} ${labelMap[source.type] || source.type}</div>
-            <div class="noodle-source-card-preview">${escapeHtml(source.preview)}</div>
-          `;
+      const card = document.createElement('div');
+      card.className = 'noodle-source-card';
+      card.innerHTML = `
+        <div class="noodle-source-card-label">${iconMap[source.type] || '📎'} ${escapeHtml(labelMap[source.type] || source.type)}</div>
+        <div class="noodle-source-card-preview">${escapeHtml(source.preview)}</div>
+      `;
 
-          // Use fixed positioning on body so it always appears correctly
-          // regardless of noodleRoot's positioning context
-          card.style.position = 'fixed';
-          document.body.appendChild(card);
+      // Render off-screen first to measure
+      card.style.cssText = 'position:fixed;left:0;top:-9999px;';
+      document.body.appendChild(card);
 
-          // Position below the segment using viewport coords
-          const rect = seg.getBoundingClientRect();
-          let left = rect.left;
-          let top = rect.bottom + 6;
+      const rect = seg.getBoundingClientRect();
+      const cardW = card.offsetWidth;
+      const cardH = card.offsetHeight;
 
-          // Force a layout pass so offsetWidth is available
-          card.style.left = '0px';
-          card.style.top = '-9999px';
-          const cardW = card.offsetWidth;
+      let left = rect.left;
+      let top = rect.bottom + 8;
 
-          // Clamp so card doesn't go off-screen right
-          if (left + cardW > window.innerWidth - 8) {
-            left = Math.max(8, window.innerWidth - cardW - 8);
-          }
-          // Clamp so card doesn't go off-screen bottom
-          if (top + card.offsetHeight > window.innerHeight - 8) {
-            top = rect.top - card.offsetHeight - 6;
-          }
+      // Clamp horizontally
+      if (left + cardW > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - cardW - 8);
+      }
+      // Flip above if not enough room below
+      if (top + cardH > window.innerHeight - 8) {
+        top = rect.top - cardH - 8;
+      }
 
-          card.style.left = left + 'px';
-          card.style.top = top + 'px';
-        } catch (e) {}
-      });
+      card.style.left = left + 'px';
+      card.style.top = top + 'px';
 
-      seg.addEventListener('mouseleave', () => {
-        card?.remove();
-        card = null;
-      });
+      activeCard = card;
+      activeSegEl = seg;
+    }
+
+    function removeCard() {
+      activeCard?.remove();
+      activeCard = null;
+      activeSegEl = null;
+    }
+
+    container.addEventListener('mouseover', (e) => {
+      const seg = e.target.closest('.noodle-sourced-seg');
+      if (seg && container.contains(seg)) {
+        showCard(seg);
+      } else {
+        removeCard();
+      }
+    });
+
+    container.addEventListener('mouseleave', () => {
+      removeCard();
     });
   }
 
