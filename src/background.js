@@ -462,7 +462,7 @@ Please enhance the notes for this task.`;
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-20250514',
+        model: 'claude-haiku-4-5',
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
