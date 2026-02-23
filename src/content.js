@@ -1102,24 +1102,28 @@
   }
 
   function renderEnhancedSegments(notesEl, segments, suggestedMentions) {
-    // Build HTML from segments — sourced segments get a span with data-source
-    let html = segments.map(seg => {
-      if (!seg.source) return escapeHtml(seg.text);
+    // Each segment = one <li> bullet. Only underline if source has a real preview.
+    const liItems = segments.map(seg => {
+      const hasRealSource = seg.source && seg.source.preview && seg.source.preview.trim().length > 0;
+      if (!hasRealSource) {
+        return `<li>${escapeHtml(seg.text)}</li>`;
+      }
       const sourceJson = escapeHtml(JSON.stringify(seg.source));
-      return `<span class="noodle-sourced-seg" data-source="${sourceJson}">${escapeHtml(seg.text)}</span>`;
-    }).join(' ');
+      return `<li><span class="noodle-sourced-seg" data-source="${sourceJson}">${escapeHtml(seg.text)}</span></li>`;
+    }).join('');
 
-    // Append suggested mentions as clickable chips if any
+    // Suggested mention chips appended as a final li if any
+    let mentionHtml = '';
     if (suggestedMentions && suggestedMentions.length > 0) {
       const chips = suggestedMentions.map(name => {
         const folder = folders.find(f => f.name === name);
         if (!folder) return '';
         return `<span class="noodle-mention-chip" data-folder-id="${folder.id}" data-mention="${escapeHtml(folder.name)}" contenteditable="false">#${escapeHtml(folder.name)}</span>`;
       }).filter(Boolean).join(' ');
-      if (chips) html += ' ' + chips;
+      if (chips) mentionHtml = `<li class="noodle-mention-li">${chips}</li>`;
     }
 
-    notesEl.innerHTML = html;
+    notesEl.innerHTML = `<ul class="noodle-enhanced-list">${liItems}${mentionHtml}</ul>`;
     notesEl.contentEditable = 'false'; // read-only while in enhanced view
 
     // Attach hover cards to sourced segments
@@ -1143,7 +1147,7 @@
 
           const iconMap = { page: '📄', snippet: '📁', user: '✏️' };
           const labelMap = {
-            page: seg.closest('[data-source-url]')?.dataset?.sourceUrl ? 'Page context' : 'Page context',
+            page: 'Page context',
             snippet: `#${source.folder || 'Folder'}`,
             user: 'Your notes'
           };
@@ -1153,20 +1157,32 @@
             <div class="noodle-source-card-preview">${escapeHtml(source.preview)}</div>
           `;
 
-          noodleRoot.appendChild(card);
+          // Use fixed positioning on body so it always appears correctly
+          // regardless of noodleRoot's positioning context
+          card.style.position = 'fixed';
+          document.body.appendChild(card);
 
-          // Position below the segment
+          // Position below the segment using viewport coords
           const rect = seg.getBoundingClientRect();
-          const rootRect = noodleRoot.getBoundingClientRect();
-          card.style.left = (rect.left - rootRect.left) + 'px';
-          card.style.top = (rect.bottom - rootRect.top + 6) + 'px';
+          let left = rect.left;
+          let top = rect.bottom + 6;
 
-          // Clamp to sidebar width
-          const cardRight = (rect.left - rootRect.left) + card.offsetWidth;
-          const sidebarWidth = noodleRoot.offsetWidth;
-          if (cardRight > sidebarWidth - 8) {
-            card.style.left = Math.max(0, sidebarWidth - card.offsetWidth - 8) + 'px';
+          // Force a layout pass so offsetWidth is available
+          card.style.left = '0px';
+          card.style.top = '-9999px';
+          const cardW = card.offsetWidth;
+
+          // Clamp so card doesn't go off-screen right
+          if (left + cardW > window.innerWidth - 8) {
+            left = Math.max(8, window.innerWidth - cardW - 8);
           }
+          // Clamp so card doesn't go off-screen bottom
+          if (top + card.offsetHeight > window.innerHeight - 8) {
+            top = rect.top - card.offsetHeight - 6;
+          }
+
+          card.style.left = left + 'px';
+          card.style.top = top + 'px';
         } catch (e) {}
       });
 

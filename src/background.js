@@ -416,22 +416,24 @@ You must return ONLY valid JSON — no markdown, no code fences, no explanation.
 Return this exact structure:
 {
   "segments": [
-    { "text": "...", "source": null },
-    { "text": "...", "source": { "type": "page", "preview": "..." } },
-    { "text": "...", "source": { "type": "snippet", "folder": "FolderName", "preview": "..." } },
-    { "text": "...", "source": { "type": "user", "preview": "..." } }
+    { "text": "One bullet point of enhanced notes", "source": null },
+    { "text": "Another bullet point drawn from page context", "source": { "type": "page", "preview": "exact excerpt from page context, max 80 chars" } },
+    { "text": "A point referencing a project folder", "source": { "type": "snippet", "folder": "FolderName", "preview": "exact excerpt from that folder's snippet, max 80 chars" } },
+    { "text": "A point based on the user's own notes", "source": { "type": "user", "preview": "exact quote from user notes, max 80 chars" } }
   ],
-  "suggestedMentions": ["FolderName1", "FolderName2"]
+  "suggestedMentions": ["FolderName1"]
 }
 
 Rules:
-- Each segment is a short phrase or sentence (not a full paragraph)
-- source.type can be: "page" (from page context), "snippet" (from a folder's snippets), "user" (from user's notes), or null (general synthesis)
-- source.preview is a brief excerpt (max 80 chars) from the source that justifies this segment
-- suggestedMentions lists folder names that are clearly relevant but not already #mentioned by the user
-- Keep the user's voice and intent — enhance, don't replace
-- Weave user notes and page context together naturally
-- Be concise: aim for 2-4 sentences total across all segments`;
+- Each segment = exactly ONE bullet point (a short, complete sentence)
+- Aim for 3-5 bullet points total
+- source must be null UNLESS the segment directly draws from a specific source you can quote
+- Only set source when you can provide a real preview excerpt from that source — do NOT invent previews
+- source.type: "page" = from page context, "snippet" = from a folder snippet, "user" = from user's own notes
+- source.preview: a real verbatim excerpt (max 80 chars) from the source material
+- suggestedMentions: folder names clearly relevant but not already #mentioned
+- Keep the user's voice — enhance, don't replace
+- Be concise and scannable`;
 
   const folderContext = allFolders.length > 0
     ? allFolders.map(f => `Folder "#${f.name}" contains snippets:\n${f.snippets.map(s => `- "${s.text.substring(0, 100)}"`).join('\n')}`).join('\n\n')

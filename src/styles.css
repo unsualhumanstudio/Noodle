@@ -3156,6 +3156,33 @@
   border-color: #c8ccd4;
 }
 
+/* ── Enhanced bullet list ── */
+.noodle-enhanced-list {
+  margin: 0;
+  padding: 0 0 0 18px;
+  list-style: disc;
+}
+
+.noodle-enhanced-list li {
+  font-size: 13px;
+  color: #2d3748;
+  line-height: 1.6;
+  margin-bottom: 6px;
+  padding-left: 2px;
+}
+
+.noodle-enhanced-list li:last-child {
+  margin-bottom: 0;
+}
+
+.noodle-mention-li {
+  list-style: none;
+  margin-left: -18px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #eaecef;
+}
+
 /* ── Sourced segments (Granola-style) ── */
 .noodle-sourced-seg {
   background: #eef1ff;
@@ -3172,14 +3199,14 @@
 
 /* ── Source hover card ── */
 .noodle-source-card {
-  position: absolute;
-  z-index: 999999;
+  position: fixed;
+  z-index: 2147483647;
   background: #fff;
   border: 1px solid #e2e5ea;
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
   padding: 10px 12px;
-  max-width: 220px;
+  max-width: 240px;
   pointer-events: none;
 }
 
