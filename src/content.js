@@ -466,6 +466,15 @@
   // Track task search query
   let taskSearchQuery = '';
 
+  // Task editor enhance state
+  let enhanceRequestId = null;
+  let enhanceOriginalNotes = null;   // raw user notes before enhance
+  let enhanceSegments = null;        // [{text, source}] from AI
+  let enhanceView = null;            // 'original' | 'enhanced' | null
+
+  // Project view state
+  let projectViewFolder = null;      // folder id currently shown in project view
+
   function renderTaskPanel() {
     if (!sidebar) return;
 
@@ -707,6 +716,12 @@
   function renderTaskEditor(taskId) {
     if (!sidebar) return;
 
+    // Reset enhance state whenever we open an editor
+    enhanceRequestId = null;
+    enhanceOriginalNotes = null;
+    enhanceSegments = null;
+    enhanceView = null;
+
     const task = tasks.find(t => t.id === taskId);
     if (!task) { showToast('Task not found'); return; }
 
@@ -788,10 +803,35 @@
 
         <div class="noodle-task-editor-divider"></div>
 
-        <div class="noodle-task-editor-notes"
-             contenteditable="true"
-             data-placeholder="Add notes, context, links..."
-             spellcheck="true">${task.notes || ''}</div>
+        ${task.pageContext ? `
+        <div class="noodle-task-editor-context">
+          <div class="noodle-task-editor-context-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Page context
+            <button class="noodle-task-context-toggle" data-open="true">Hide</button>
+          </div>
+          <div class="noodle-task-editor-context-body">
+            <blockquote class="noodle-task-editor-context-quote">${escapeHtml(task.pageContext)}</blockquote>
+          </div>
+        </div>
+        <div class="noodle-task-editor-divider"></div>
+        ` : ''}
+
+        <div class="noodle-task-editor-notes-wrap">
+          <div class="noodle-task-editor-notes"
+               contenteditable="true"
+               data-placeholder="Add notes, use # to mention projects..."
+               spellcheck="true">${task.notes || ''}</div>
+          <div class="noodle-task-editor-notes-footer">
+            <div class="noodle-enhance-toggle" style="display:none;">
+              <button class="noodle-enhance-ver-btn active" data-ver="enhanced">✨ Enhanced</button>
+              <button class="noodle-enhance-ver-btn" data-ver="original">Original</button>
+            </div>
+            <button class="noodle-enhance-btn" title="Enhance notes with AI using page context and your projects">
+              ✨ Enhance
+            </button>
+          </div>
+        </div>
 
       </div>
     `;
@@ -881,11 +921,62 @@
     notesEl.addEventListener('input', () => {
       task.notes = notesEl.innerHTML;
       scheduleEditorSave();
+      // Check for # trigger
+      checkHashMentionTrigger(notesEl, taskId);
     });
 
     // Strip Chrome's ghost <br> so CSS placeholder shows correctly
     notesEl.addEventListener('blur', () => {
       if (notesEl.innerHTML === '<br>') notesEl.innerHTML = '';
+    });
+
+    // ── Context toggle ────────────────────────────────────────────────────────
+    const ctxToggle = sidebar.querySelector('.noodle-task-context-toggle');
+    if (ctxToggle) {
+      ctxToggle.addEventListener('click', () => {
+        const body = sidebar.querySelector('.noodle-task-editor-context-body');
+        const open = ctxToggle.dataset.open === 'true';
+        if (open) {
+          body.style.display = 'none';
+          ctxToggle.dataset.open = 'false';
+          ctxToggle.textContent = 'Show';
+        } else {
+          body.style.display = '';
+          ctxToggle.dataset.open = 'true';
+          ctxToggle.textContent = 'Hide';
+        }
+      });
+    }
+
+    // ── Enhance button ────────────────────────────────────────────────────────
+    const enhanceBtn = sidebar.querySelector('.noodle-enhance-btn');
+    if (enhanceBtn) {
+      // Check API key availability
+      chrome.storage.local.get('noodleApiKey', (result) => {
+        if (!result.noodleApiKey) {
+          enhanceBtn.classList.add('no-key');
+          enhanceBtn.title = 'Add your Claude API key in Settings to use Enhance';
+        }
+      });
+
+      enhanceBtn.addEventListener('click', () => {
+        chrome.storage.local.get('noodleApiKey', (result) => {
+          if (!result.noodleApiKey) {
+            showToast('Add your Claude API key in Settings first');
+            return;
+          }
+          triggerEnhance(task, notesEl);
+        });
+      });
+    }
+
+    // ── Enhance version toggle ────────────────────────────────────────────────
+    sidebar.querySelectorAll('.noodle-enhance-ver-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ver = btn.dataset.ver;
+        if (ver === enhanceView) return;
+        switchEnhanceView(ver, notesEl, task);
+      });
     });
 
     // ── Status chip ──────────────────────────────────────────────────────────
@@ -925,6 +1016,422 @@
       taskEditorSaveTimer = setTimeout(() => saveTasks(), 500);
     }
   }
+
+  // ─── Enhance with AI ──────────────────────────────────────────────────────
+
+  function triggerEnhance(task, notesEl) {
+    const enhanceBtn = sidebar?.querySelector('.noodle-enhance-btn');
+    if (!enhanceBtn) return;
+
+    // Snapshot user's current notes before enhancing
+    enhanceOriginalNotes = task.notes;
+
+    // Collect folders + their snippets for context
+    const allFolders = folders.map(f => ({
+      name: f.name,
+      id: f.id,
+      snippets: snippets.filter(s => s.folderId === f.id).slice(0, 5) // cap at 5 per folder
+    }));
+
+    // Parse any #mentions already in the notes
+    const mentionedFolderNames = [];
+    const hashMatches = (task.notes || '').matchAll(/data-mention="([^"]+)"/g);
+    for (const m of hashMatches) mentionedFolderNames.push(m[1]);
+
+    const requestId = `enhance-${Date.now()}`;
+    enhanceRequestId = requestId;
+
+    // Show loading state
+    enhanceBtn.textContent = '⏳ Enhancing...';
+    enhanceBtn.disabled = true;
+
+    chrome.runtime.sendMessage({
+      type: 'noodleEnhanceTask',
+      requestId,
+      taskTitle: task.text,
+      pageContext: task.pageContext || '',
+      pageUrl: task.sourceUrl || '',
+      pageTitle: task.sourceTitle || '',
+      userNotes: task.notes ? (new DOMParser().parseFromString(task.notes, 'text/html').body.textContent || '') : '',
+      mentionedFolders: mentionedFolderNames,
+      allFolders
+    });
+  }
+
+  function handleEnhanceDone(requestId, segments, suggestedMentions) {
+    if (requestId !== enhanceRequestId) return;
+
+    const enhanceBtn = sidebar?.querySelector('.noodle-enhance-btn');
+    const notesEl = sidebar?.querySelector('.noodle-task-editor-notes');
+    const toggleRow = sidebar?.querySelector('.noodle-enhance-toggle');
+    if (!notesEl) return;
+
+    enhanceSegments = segments;
+    enhanceView = 'enhanced';
+
+    // Render enhanced segments into notes
+    renderEnhancedSegments(notesEl, segments, suggestedMentions);
+
+    // Save as task notes (plain text version for storage)
+    const task = tasks.find(t => t.id === taskEditingId);
+    if (task) {
+      task.notes = notesEl.innerHTML;
+      saveTasks();
+    }
+
+    // Show toggle, restore button
+    if (toggleRow) {
+      toggleRow.style.display = 'flex';
+      toggleRow.querySelector('[data-ver="enhanced"]')?.classList.add('active');
+      toggleRow.querySelector('[data-ver="original"]')?.classList.remove('active');
+    }
+    if (enhanceBtn) {
+      enhanceBtn.textContent = '✨ Enhance';
+      enhanceBtn.disabled = false;
+    }
+  }
+
+  function handleEnhanceError(requestId, error) {
+    if (requestId !== enhanceRequestId) return;
+    const enhanceBtn = sidebar?.querySelector('.noodle-enhance-btn');
+    if (enhanceBtn) {
+      enhanceBtn.textContent = '✨ Enhance';
+      enhanceBtn.disabled = false;
+    }
+    showToast('Enhance failed: ' + error);
+  }
+
+  function renderEnhancedSegments(notesEl, segments, suggestedMentions) {
+    // Build HTML from segments — sourced segments get a span with data-source
+    let html = segments.map(seg => {
+      if (!seg.source) return escapeHtml(seg.text);
+      const sourceJson = escapeHtml(JSON.stringify(seg.source));
+      return `<span class="noodle-sourced-seg" data-source="${sourceJson}">${escapeHtml(seg.text)}</span>`;
+    }).join(' ');
+
+    // Append suggested mentions as clickable chips if any
+    if (suggestedMentions && suggestedMentions.length > 0) {
+      const chips = suggestedMentions.map(name => {
+        const folder = folders.find(f => f.name === name);
+        if (!folder) return '';
+        return `<span class="noodle-mention-chip" data-folder-id="${folder.id}" data-mention="${escapeHtml(folder.name)}" contenteditable="false">#${escapeHtml(folder.name)}</span>`;
+      }).filter(Boolean).join(' ');
+      if (chips) html += ' ' + chips;
+    }
+
+    notesEl.innerHTML = html;
+    notesEl.contentEditable = 'false'; // read-only while in enhanced view
+
+    // Attach hover cards to sourced segments
+    attachSourceHoverCards(notesEl);
+
+    // Attach mention chip clicks
+    attachMentionChipClicks(notesEl);
+  }
+
+  function attachSourceHoverCards(container) {
+    container.querySelectorAll('.noodle-sourced-seg').forEach(seg => {
+      let card = null;
+
+      seg.addEventListener('mouseenter', () => {
+        try {
+          const source = JSON.parse(seg.dataset.source || '{}');
+          if (!source || !source.preview) return;
+
+          card = document.createElement('div');
+          card.className = 'noodle-source-card';
+
+          const iconMap = { page: '📄', snippet: '📁', user: '✏️' };
+          const labelMap = {
+            page: seg.closest('[data-source-url]')?.dataset?.sourceUrl ? 'Page context' : 'Page context',
+            snippet: `#${source.folder || 'Folder'}`,
+            user: 'Your notes'
+          };
+
+          card.innerHTML = `
+            <div class="noodle-source-card-label">${iconMap[source.type] || '📎'} ${labelMap[source.type] || source.type}</div>
+            <div class="noodle-source-card-preview">${escapeHtml(source.preview)}</div>
+          `;
+
+          noodleRoot.appendChild(card);
+
+          // Position below the segment
+          const rect = seg.getBoundingClientRect();
+          const rootRect = noodleRoot.getBoundingClientRect();
+          card.style.left = (rect.left - rootRect.left) + 'px';
+          card.style.top = (rect.bottom - rootRect.top + 6) + 'px';
+
+          // Clamp to sidebar width
+          const cardRight = (rect.left - rootRect.left) + card.offsetWidth;
+          const sidebarWidth = noodleRoot.offsetWidth;
+          if (cardRight > sidebarWidth - 8) {
+            card.style.left = Math.max(0, sidebarWidth - card.offsetWidth - 8) + 'px';
+          }
+        } catch (e) {}
+      });
+
+      seg.addEventListener('mouseleave', () => {
+        card?.remove();
+        card = null;
+      });
+    });
+  }
+
+  function switchEnhanceView(ver, notesEl, task) {
+    enhanceView = ver;
+    const toggleBtns = sidebar?.querySelectorAll('.noodle-enhance-ver-btn');
+    toggleBtns?.forEach(b => b.classList.toggle('active', b.dataset.ver === ver));
+
+    if (ver === 'original') {
+      // Restore original plain notes, make editable
+      notesEl.innerHTML = enhanceOriginalNotes || '';
+      notesEl.contentEditable = 'true';
+    } else {
+      // Re-render enhanced view
+      if (enhanceSegments) {
+        renderEnhancedSegments(notesEl, enhanceSegments, []);
+      }
+    }
+  }
+
+  // ─── # Mention autocomplete ───────────────────────────────────────────────
+
+  let hashMentionDropdown = null;
+  let hashMentionQuery = '';
+
+  function checkHashMentionTrigger(notesEl, taskId) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE) { closeHashMentionDropdown(); return; }
+
+    const text = node.textContent.substring(0, range.startOffset);
+    const hashIdx = text.lastIndexOf('#');
+
+    if (hashIdx === -1) { closeHashMentionDropdown(); return; }
+
+    // Make sure nothing between # and cursor invalidates it
+    const query = text.substring(hashIdx + 1);
+    if (/\s/.test(query)) { closeHashMentionDropdown(); return; }
+
+    hashMentionQuery = query.toLowerCase();
+
+    const matches = folders.filter(f =>
+      f.name.toLowerCase().includes(hashMentionQuery)
+    ).slice(0, 6);
+
+    if (matches.length === 0) { closeHashMentionDropdown(); return; }
+
+    showHashMentionDropdown(matches, notesEl, range, hashIdx, node);
+  }
+
+  function showHashMentionDropdown(matches, notesEl, range, hashIdx, textNode) {
+    closeHashMentionDropdown();
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'noodle-hash-dropdown';
+    hashMentionDropdown = dropdown;
+
+    matches.forEach((folder, i) => {
+      const item = document.createElement('div');
+      item.className = 'noodle-hash-dropdown-item' + (i === 0 ? ' selected' : '');
+      item.textContent = '#' + folder.name;
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        insertMentionChip(folder, notesEl, textNode, hashIdx, range);
+        closeHashMentionDropdown();
+      });
+      dropdown.appendChild(item);
+    });
+
+    noodleRoot.appendChild(dropdown);
+
+    // Position relative to cursor
+    const rect = range.getBoundingClientRect();
+    const rootRect = noodleRoot.getBoundingClientRect();
+    dropdown.style.left = (rect.left - rootRect.left) + 'px';
+    dropdown.style.top = (rect.bottom - rootRect.top + 4) + 'px';
+
+    // Keyboard nav
+    notesEl._hashKeyHandler = (e) => {
+      if (!hashMentionDropdown) return;
+      const items = [...dropdown.querySelectorAll('.noodle-hash-dropdown-item')];
+      const selected = dropdown.querySelector('.selected');
+      const idx = items.indexOf(selected);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[idx]?.classList.remove('selected');
+        items[(idx + 1) % items.length]?.classList.add('selected');
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[idx]?.classList.remove('selected');
+        items[(idx - 1 + items.length) % items.length]?.classList.add('selected');
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        const selItem = dropdown.querySelector('.selected');
+        if (selItem) {
+          e.preventDefault();
+          const folderName = selItem.textContent.slice(1);
+          const folder = folders.find(f => f.name === folderName);
+          if (folder) insertMentionChip(folder, notesEl, textNode, hashIdx, range);
+          closeHashMentionDropdown();
+        }
+      } else if (e.key === 'Escape') {
+        closeHashMentionDropdown();
+      }
+    };
+    notesEl.addEventListener('keydown', notesEl._hashKeyHandler, true);
+  }
+
+  function insertMentionChip(folder, notesEl, textNode, hashIdx, currentRange) {
+    // Replace from # to current cursor position with a chip
+    const before = textNode.textContent.substring(0, hashIdx);
+    const after = textNode.textContent.substring(currentRange.startOffset);
+
+    const chip = document.createElement('span');
+    chip.className = 'noodle-mention-chip';
+    chip.dataset.folderId = folder.id;
+    chip.dataset.mention = folder.name;
+    chip.contentEditable = 'false';
+    chip.textContent = '#' + folder.name;
+
+    const beforeNode = document.createTextNode(before);
+    const afterNode = document.createTextNode('\u00A0' + after); // nbsp spacer
+
+    textNode.parentNode.insertBefore(beforeNode, textNode);
+    textNode.parentNode.insertBefore(chip, textNode);
+    textNode.parentNode.insertBefore(afterNode, textNode);
+    textNode.parentNode.removeChild(textNode);
+
+    // Move cursor after chip
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.setStart(afterNode, 1);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    // Save
+    const task = tasks.find(t => t.id === taskEditingId);
+    if (task) {
+      task.notes = notesEl.innerHTML;
+      saveTasks();
+    }
+
+    attachMentionChipClicks(notesEl);
+  }
+
+  function closeHashMentionDropdown() {
+    if (hashMentionDropdown) {
+      hashMentionDropdown.remove();
+      hashMentionDropdown = null;
+    }
+    const notesEl = sidebar?.querySelector('.noodle-task-editor-notes');
+    if (notesEl?._hashKeyHandler) {
+      notesEl.removeEventListener('keydown', notesEl._hashKeyHandler, true);
+      notesEl._hashKeyHandler = null;
+    }
+  }
+
+  function attachMentionChipClicks(container) {
+    container.querySelectorAll('.noodle-mention-chip').forEach(chip => {
+      // Remove old listener by cloning
+      const fresh = chip.cloneNode(true);
+      chip.parentNode?.replaceChild(fresh, chip);
+      fresh.addEventListener('click', (e) => {
+        e.preventDefault();
+        const folderId = fresh.dataset.folderId;
+        if (folderId) renderProjectView(folderId);
+      });
+    });
+  }
+
+  // ─── Project View ─────────────────────────────────────────────────────────
+
+  function renderProjectView(folderId) {
+    if (!sidebar) return;
+    projectViewFolder = folderId;
+
+    const folder = folders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    const folderSnippets = snippets.filter(s => s.folderId === folderId);
+    const mentioningTasks = tasks.filter(t => {
+      if (!t.notes) return false;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(t.notes, 'text/html');
+      return [...doc.querySelectorAll('.noodle-mention-chip')].some(c => c.dataset.folderId === folderId);
+    });
+
+    sidebar.innerHTML = `
+      <div class="noodle-sidebar-resize-handle"></div>
+      <div class="noodle-project-view">
+        <div class="noodle-project-view-header">
+          <button class="noodle-project-back-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Back
+          </button>
+          <h2 class="noodle-project-title">#${escapeHtml(folder.name)}</h2>
+        </div>
+
+        <div class="noodle-project-section">
+          <div class="noodle-project-section-label">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Tasks mentioning #${escapeHtml(folder.name)}
+          </div>
+          ${mentioningTasks.length === 0
+            ? '<p class="noodle-project-empty">No tasks yet</p>'
+            : mentioningTasks.map(t => `
+                <div class="noodle-project-task-item" data-task-id="${t.id}">
+                  <span class="noodle-project-task-check ${t.done ? 'done' : ''}">
+                    ${t.done ? `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>` : ''}
+                  </span>
+                  <span class="noodle-project-task-text ${t.done ? 'done' : ''}">${escapeHtml(t.text)}</span>
+                </div>
+              `).join('')
+          }
+        </div>
+
+        <div class="noodle-project-section">
+          <div class="noodle-project-section-label">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            Snippets in #${escapeHtml(folder.name)}
+          </div>
+          ${folderSnippets.length === 0
+            ? '<p class="noodle-project-empty">No snippets yet</p>'
+            : folderSnippets.map(s => `
+                <div class="noodle-project-snippet-item">
+                  <span class="noodle-project-snippet-dot" style="background:${COLORS[s.color] || '#e5e7eb'}"></span>
+                  <span class="noodle-project-snippet-text">${escapeHtml(s.text.substring(0, 120))}${s.text.length > 120 ? '…' : ''}</span>
+                </div>
+              `).join('')
+          }
+        </div>
+      </div>
+    `;
+
+    setupSidebarResize();
+
+    // Back button — return to task editor if we came from one, else task list
+    sidebar.querySelector('.noodle-project-back-btn').addEventListener('click', () => {
+      projectViewFolder = null;
+      if (taskEditingId) {
+        renderTaskEditor(taskEditingId);
+      } else {
+        renderTaskPanel();
+      }
+    });
+
+    // Click task → open editor
+    sidebar.querySelectorAll('.noodle-project-task-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const tid = item.dataset.taskId;
+        if (tid) renderTaskEditor(tid);
+      });
+    });
+  }
+
 
   // Rich-text keyboard handler for the notes contenteditable
   function handleNotesKeydown(e, el) {
@@ -2252,8 +2759,29 @@
     showToast(`Saved to ${colorLabels[color]}`);
   }
 
+  // Grab surrounding text context from a Range (parent block element text)
+  function getPageContext(range) {
+    if (!range) return '';
+    try {
+      // Walk up to find a meaningful block ancestor
+      let node = range.startContainer;
+      if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+      const block = node.closest('p, li, blockquote, td, section, article, div[class], h1, h2, h3, h4, h5, h6') || node;
+      let context = (block.innerText || block.textContent || '').trim();
+      // Also try to grab an ancestor heading for extra context
+      const heading = block.closest('section, article')?.querySelector('h1,h2,h3');
+      if (heading && heading.textContent.trim()) {
+        context = heading.textContent.trim() + ' — ' + context;
+      }
+      return context.substring(0, 600); // cap at 600 chars
+    } catch (e) {
+      return '';
+    }
+  }
+
   // Save a web-page text selection as a task
   function saveWebPageTask(text, range) {
+    const pageContext = getPageContext(range);
     const task = {
       id: Date.now().toString(),
       text: text.trim(),
@@ -2262,6 +2790,7 @@
       sourceUrl: window.location.href,
       sourceTitle: document.title || window.location.hostname,
       sourceChatId: null,
+      pageContext: pageContext, // surrounding page text for AI enhance
       createdAt: new Date().toISOString(),
       done: false,
       doneAt: null
@@ -2664,6 +3193,12 @@
           if (message.requestId === aiCurrentRequestId) {
             aiWebCitations = message.citations || [];
           }
+          break;
+        case 'noodleEnhanceDone':
+          handleEnhanceDone(message.requestId, message.segments, message.suggestedMentions);
+          break;
+        case 'noodleEnhanceError':
+          handleEnhanceError(message.requestId, message.error);
           break;
       }
     });

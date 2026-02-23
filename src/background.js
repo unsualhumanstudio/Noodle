@@ -66,6 +66,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleResearchRequest(message, sender);
     return true;
   }
+
+  if (message.type === 'noodleEnhanceTask') {
+    handleEnhanceTask(message, sender);
+    return true;
+  }
 });
 
 // Handle AI API requests with streaming
@@ -384,6 +389,132 @@ async function handleResearchRequest(message, sender) {
 
   // Exhausted all rounds without end_turn — clean up
   delete activeControllers[requestId];
+}
+
+// Handle task enhancement with AI — returns structured JSON with sourced segments
+async function handleEnhanceTask(message, sender) {
+  const { requestId, taskTitle, pageContext, userNotes, mentionedFolders, allFolders, pageUrl, pageTitle } = message;
+  const tabId = sender.tab?.id;
+  if (!tabId) return;
+
+  const result = await chrome.storage.local.get('noodleApiKey');
+  const apiKey = result.noodleApiKey;
+
+  if (!apiKey) {
+    chrome.tabs.sendMessage(tabId, {
+      type: 'noodleEnhanceError',
+      requestId,
+      error: 'No API key configured. Add your Claude API key in Settings.'
+    });
+    return;
+  }
+
+  const systemPrompt = `You are a smart task assistant that enhances task notes by synthesizing page context, user notes, and relevant project snippets.
+
+You must return ONLY valid JSON — no markdown, no code fences, no explanation.
+
+Return this exact structure:
+{
+  "segments": [
+    { "text": "...", "source": null },
+    { "text": "...", "source": { "type": "page", "preview": "..." } },
+    { "text": "...", "source": { "type": "snippet", "folder": "FolderName", "preview": "..." } },
+    { "text": "...", "source": { "type": "user", "preview": "..." } }
+  ],
+  "suggestedMentions": ["FolderName1", "FolderName2"]
+}
+
+Rules:
+- Each segment is a short phrase or sentence (not a full paragraph)
+- source.type can be: "page" (from page context), "snippet" (from a folder's snippets), "user" (from user's notes), or null (general synthesis)
+- source.preview is a brief excerpt (max 80 chars) from the source that justifies this segment
+- suggestedMentions lists folder names that are clearly relevant but not already #mentioned by the user
+- Keep the user's voice and intent — enhance, don't replace
+- Weave user notes and page context together naturally
+- Be concise: aim for 2-4 sentences total across all segments`;
+
+  const folderContext = allFolders.length > 0
+    ? allFolders.map(f => `Folder "#${f.name}" contains snippets:\n${f.snippets.map(s => `- "${s.text.substring(0, 100)}"`).join('\n')}`).join('\n\n')
+    : 'No folders/snippets available.';
+
+  const userMessage = `Task title: "${taskTitle}"
+Source page: ${pageTitle || 'Unknown'} (${pageUrl || 'no URL'})
+Page context (surrounding text where the task was created):
+"${pageContext || 'No page context available'}"
+
+User's existing notes:
+"${userNotes || 'None'}"
+
+Already #mentioned folders: ${mentionedFolders.length > 0 ? mentionedFolders.join(', ') : 'None'}
+
+Available project folders and their snippets:
+${folderContext}
+
+Please enhance the notes for this task.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-20250514',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      chrome.tabs.sendMessage(tabId, {
+        type: 'noodleEnhanceError',
+        requestId,
+        error: `API error (${response.status}): ${errorText}`
+      });
+      return;
+    }
+
+    const data = await response.json();
+    const rawText = data.content?.[0]?.text || '';
+
+    let parsed;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch (e) {
+      // Try to extract JSON from response if wrapped in anything
+      const match = rawText.match(/\{[\s\S]*\}/);
+      parsed = match ? JSON.parse(match[0]) : null;
+    }
+
+    if (!parsed || !Array.isArray(parsed.segments)) {
+      chrome.tabs.sendMessage(tabId, {
+        type: 'noodleEnhanceError',
+        requestId,
+        error: 'AI returned an unexpected format. Please try again.'
+      });
+      return;
+    }
+
+    chrome.tabs.sendMessage(tabId, {
+      type: 'noodleEnhanceDone',
+      requestId,
+      segments: parsed.segments,
+      suggestedMentions: parsed.suggestedMentions || []
+    });
+
+  } catch (err) {
+    chrome.tabs.sendMessage(tabId, {
+      type: 'noodleEnhanceError',
+      requestId,
+      error: err.message
+    });
+  }
 }
 
 // Inject content script into a tab
