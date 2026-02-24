@@ -1311,8 +1311,6 @@
 
     const text = node.textContent.substring(0, range.startOffset);
     const hashIdx = text.lastIndexOf('#');
-    console.log('[Noodle#] node type:', node.nodeType, 'text:', JSON.stringify(text), 'hashIdx:', hashIdx);
-
     if (hashIdx === -1) { closeHashMentionDropdown(); return; }
 
     // Make sure nothing between # and cursor invalidates it
@@ -1325,7 +1323,6 @@
       f.name.toLowerCase().includes(hashMentionQuery)
     ).slice(0, 6);
 
-    console.log('[Noodle#] query:', hashMentionQuery, 'matches:', matches.length, 'folders total:', folders.length);
     if (matches.length === 0) { closeHashMentionDropdown(); return; }
 
     showHashMentionDropdown(matches, notesEl, range, hashIdx, node);
@@ -1350,13 +1347,12 @@
       dropdown.appendChild(item);
     });
 
-    noodleRoot.appendChild(dropdown);
+    document.body.appendChild(dropdown);
 
-    // Position relative to cursor
+    // Position using fixed viewport coords — same pattern as source card
     const rect = range.getBoundingClientRect();
-    const rootRect = noodleRoot.getBoundingClientRect();
-    dropdown.style.left = (rect.left - rootRect.left) + 'px';
-    dropdown.style.top = (rect.bottom - rootRect.top + 4) + 'px';
+    dropdown.style.left = Math.min(rect.left, window.innerWidth - 180) + 'px';
+    dropdown.style.top = (rect.bottom + 4) + 'px';
 
     // Keyboard nav
     notesEl._hashKeyHandler = (e) => {

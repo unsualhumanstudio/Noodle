@@ -3305,8 +3305,8 @@
 
 /* ── # Mention dropdown ── */
 .noodle-hash-dropdown {
-  position: absolute;
-  z-index: 999999;
+  position: fixed;
+  z-index: 2147483647;
   background: #fff;
   border: 1px solid #e2e5ea;
   border-radius: 8px;
