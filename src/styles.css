@@ -3192,14 +3192,13 @@
   height: 15.8px;
   margin-left: 4px;
   padding: 0;
-  background: #eef1ff;
-  border: 1px solid #c7c2ff;
-  border-radius: 50%;
+  background: none;
+  border: none;
   color: #6c63ff;
   cursor: pointer;
   vertical-align: middle;
-  opacity: 0.8;
-  transition: opacity 0.1s, background 0.1s, color 0.1s;
+  opacity: 0.6;
+  transition: opacity 0.1s, color 0.1s;
   user-select: none;
   flex-shrink: 0;
 }
