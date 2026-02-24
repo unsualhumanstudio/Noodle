@@ -1074,11 +1074,19 @@
     // Render enhanced segments into notes
     renderEnhancedSegments(notesEl, segments, suggestedMentions);
 
-    // Keep task.notes as the original (notesEl) content — it still holds the
-    // user's solid chips and original text. The enhanced view is display-only.
+    // If the user had solid # chips, preserve the original notes (chips + text).
+    // If there were no chips, the enhanced view becomes the new notes.
     const task = tasks.find(t => t.id === taskEditingId);
     if (task) {
-      task.notes = enhanceOriginalNotes || notesEl.innerHTML;
+      const hadChips = notesEl.querySelector('.noodle-mention-chip') !== null;
+      if (hadChips) {
+        // Keep original so user's chips + notes are never overwritten
+        task.notes = enhanceOriginalNotes || notesEl.innerHTML;
+      } else {
+        // No chips — enhanced content becomes the saved notes
+        const enhancedViewEl = notesEl.parentElement?.querySelector('.noodle-task-editor-enhanced-view');
+        task.notes = enhancedViewEl ? enhancedViewEl.innerHTML : notesEl.innerHTML;
+      }
       saveTasks();
     }
 
