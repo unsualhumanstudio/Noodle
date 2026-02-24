@@ -3183,7 +3183,7 @@
   border-top: 1px solid #eaecef;
 }
 
-/* ── Source reference button (*) ── */
+/* ── Source reference button (asterisk icon) ── */
 .noodle-source-ref-btn {
   display: inline-flex;
   align-items: center;
@@ -3196,13 +3196,10 @@
   border: 1px solid #c7c2ff;
   border-radius: 50%;
   color: #6c63ff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
   cursor: pointer;
   vertical-align: middle;
   opacity: 0.8;
-  transition: opacity 0.1s, background 0.1s;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
   user-select: none;
   flex-shrink: 0;
 }
