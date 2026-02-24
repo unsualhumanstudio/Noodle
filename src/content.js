@@ -3461,13 +3461,7 @@
             <div class="noodle-ai-cmd-chip-row"></div>
             <textarea class="noodle-ai-input" placeholder="${placeholder}" rows="1"></textarea>
             <div class="noodle-ai-input-box-footer">
-              <div class="noodle-ai-footer-left">
-                ${snippets.length > 0 ? `
-                  <button class="noodle-ai-context-add-btn" title="Add context" aria-label="Add snippet context">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-                  </button>
-                ` : ''}
-              </div>
+              <div class="noodle-ai-footer-left"></div>
               <div class="noodle-ai-footer-right">
                 <button class="noodle-ai-page-btn ${aiPageMode ? 'active' : ''}"
                   title="${aiPageMode ? 'Reading page (click to turn off)' : 'Read current page for context'}">
@@ -3516,7 +3510,7 @@
             ).join('')}
           </div>
         </div>
-        ${inputBoxHTML('/command, @project, or ask anything...')}
+        ${inputBoxHTML('/command, #project, or ask anything...')}
       </div>
     `;
   }
@@ -3932,9 +3926,6 @@
         handleAiSubmit(input);
       });
     });
-
-    // Context: + button opens/closes the dropdown menu
-    attachContextListeners();
 
     // Page toggle
     root.querySelector('.noodle-ai-page-btn')?.addEventListener('click', () => {
