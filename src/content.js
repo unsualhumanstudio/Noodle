@@ -1294,11 +1294,24 @@
     if (!sel.rangeCount) return;
 
     const range = sel.getRangeAt(0);
-    const node = range.startContainer;
-    if (node.nodeType !== Node.TEXT_NODE) { closeHashMentionDropdown(); return; }
+    let node = range.startContainer;
+
+    // When the contenteditable is empty or cursor is on the element itself,
+    // Chrome gives us the element node rather than a text node — walk into it.
+    if (node.nodeType !== Node.TEXT_NODE) {
+      // Try the child at startOffset
+      const child = node.childNodes[range.startOffset - 1] || node.childNodes[range.startOffset];
+      if (child && child.nodeType === Node.TEXT_NODE) {
+        node = child;
+      } else {
+        closeHashMentionDropdown();
+        return;
+      }
+    }
 
     const text = node.textContent.substring(0, range.startOffset);
     const hashIdx = text.lastIndexOf('#');
+    console.log('[Noodle#] node type:', node.nodeType, 'text:', JSON.stringify(text), 'hashIdx:', hashIdx);
 
     if (hashIdx === -1) { closeHashMentionDropdown(); return; }
 
@@ -1312,6 +1325,7 @@
       f.name.toLowerCase().includes(hashMentionQuery)
     ).slice(0, 6);
 
+    console.log('[Noodle#] query:', hashMentionQuery, 'matches:', matches.length, 'folders total:', folders.length);
     if (matches.length === 0) { closeHashMentionDropdown(); return; }
 
     showHashMentionDropdown(matches, notesEl, range, hashIdx, node);
