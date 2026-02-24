@@ -1108,44 +1108,57 @@
     // Render into a plain (non-contenteditable) sibling div so click events
     // on buttons work without any contenteditable interference.
     const enhancedView = notesEl.parentElement?.querySelector('.noodle-task-editor-enhanced-view');
-    console.log('[Noodle] renderEnhancedSegments — enhancedView found:', !!enhancedView, 'segments:', JSON.stringify(segments));
 
-    const liItems = segments.map(seg => {
+    // Build the list in JS DOM — never serialize source JSON into HTML attributes,
+    // which breaks when the JSON contains quotes that escapeHtml mangles.
+    const ul = document.createElement('ul');
+    ul.className = 'noodle-enhanced-list';
+
+    segments.forEach(seg => {
       const hasRealSource = seg.source && seg.source.preview && seg.source.preview.trim().length > 0;
-      console.log('[Noodle] segment:', seg.text, '| hasRealSource:', hasRealSource, '| source:', JSON.stringify(seg.source));
-      if (!hasRealSource) {
-        return `<li>${escapeHtml(seg.text)}</li>`;
-      }
-      const sourceJson = escapeHtml(JSON.stringify(seg.source));
-      return `<li>${escapeHtml(seg.text)}<button class="noodle-source-ref-btn" data-source="${sourceJson}" title="View source"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12"/><path d="M17.196 9 6.804 15"/><path d="m6.804 9 10.392 6"/></svg></button></li>`;
-    }).join('');
+      const li = document.createElement('li');
+      li.textContent = seg.text;
 
-    // Suggested mention chips
-    let mentionHtml = '';
+      if (hasRealSource) {
+        const btn = document.createElement('button');
+        btn.className = 'noodle-source-ref-btn';
+        btn.title = 'View source';
+        // Store source directly on the element — no HTML serialization needed
+        btn._noodleSource = seg.source;
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12"/><path d="M17.196 9 6.804 15"/><path d="m6.804 9 10.392 6"/></svg>`;
+        li.appendChild(btn);
+      }
+      ul.appendChild(li);
+    });
+
+    // Suggested mention chips as a final li
     if (suggestedMentions && suggestedMentions.length > 0) {
-      const chips = suggestedMentions.map(name => {
+      const mentionLi = document.createElement('li');
+      mentionLi.className = 'noodle-mention-li';
+      suggestedMentions.forEach(name => {
         const folder = folders.find(f => f.name === name);
-        if (!folder) return '';
-        return `<span class="noodle-mention-chip" data-folder-id="${folder.id}" data-mention="${escapeHtml(folder.name)}">#${escapeHtml(folder.name)}</span>`;
-      }).filter(Boolean).join(' ');
-      if (chips) mentionHtml = `<li class="noodle-mention-li">${chips}</li>`;
+        if (!folder) return;
+        const chip = document.createElement('span');
+        chip.className = 'noodle-mention-chip';
+        chip.dataset.folderId = folder.id;
+        chip.dataset.mention = folder.name;
+        chip.textContent = `#${folder.name}`;
+        mentionLi.appendChild(chip);
+      });
+      if (mentionLi.children.length > 0) ul.appendChild(mentionLi);
     }
+
+    const target = enhancedView || notesEl;
+    target.innerHTML = '';
+    target.appendChild(ul);
 
     if (enhancedView) {
-      // Render into plain div — no contenteditable, no event conflicts
-      enhancedView.innerHTML = `<ul class="noodle-enhanced-list">${liItems}${mentionHtml}</ul>`;
       enhancedView.style.display = 'block';
       notesEl.style.display = 'none';
-      const btns = enhancedView.querySelectorAll('.noodle-source-ref-btn');
-      console.log('[Noodle] source-ref-btn count after render:', btns.length);
-      attachSourceHoverCards(enhancedView);
-      attachMentionChipClicks(enhancedView);
-    } else {
-      // Fallback: render directly into notesEl (old behaviour)
-      notesEl.innerHTML = `<ul class="noodle-enhanced-list">${liItems}${mentionHtml}</ul>`;
-      attachSourceHoverCards(notesEl);
-      attachMentionChipClicks(notesEl);
     }
+
+    attachSourceHoverCards(target);
+    attachMentionChipClicks(target);
   }
 
   // Track the currently open source card globally so we can dismiss it
@@ -1164,23 +1177,14 @@
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        console.log('[Noodle] source-ref-btn clicked, dataset.source:', btn.dataset.source);
 
         // Toggle off if already open for this button
         if (btn === activeSourceSeg) { dismissSourceCard(); return; }
 
         dismissSourceCard();
 
-        let source;
-        try { source = JSON.parse(btn.dataset.source || ''); } catch (ex) {
-          console.log('[Noodle] JSON parse error:', ex);
-          return;
-        }
-        console.log('[Noodle] parsed source:', JSON.stringify(source));
-        if (!source || !source.preview || !source.preview.trim()) {
-          console.log('[Noodle] no preview, returning early');
-          return;
-        }
+        const source = btn._noodleSource;
+        if (!source || !source.preview || !source.preview.trim()) return;
 
         const iconMap  = { page: '📄', snippet: '📁', user: '✏️' };
         const labelMap = { page: 'Page context', snippet: `#${source.folder || 'Folder'}`, user: 'Your notes' };
