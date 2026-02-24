@@ -1266,9 +1266,9 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: #f0fdf4;
-  color: #16a34a;
-  border: 1px solid #bbf7d0;
+  background: #eef1ff;
+  color: #6366f1;
+  border: 1px solid #c7d2fe;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
@@ -1278,11 +1278,11 @@
 }
 
 .noodle-ai-active-mention-chip .noodle-ai-active-cmd-remove {
-  color: #86efac;
+  color: #a5b4fc;
 }
 
 .noodle-ai-active-mention-chip .noodle-ai-active-cmd-remove:hover {
-  color: #16a34a;
+  color: #6366f1;
 }
 
 .noodle-ai-input {
@@ -1725,6 +1725,37 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+}
+
+/* Context pulled row — shown below user message when # folders were called */
+.noodle-ai-ctx-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 14px 8px;
+  align-self: flex-end;
+  flex-wrap: wrap;
+  color: #9ca3af;
+}
+
+.noodle-ai-ctx-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #9ca3af;
+  margin-right: 2px;
+}
+
+.noodle-ai-ctx-pill {
+  display: inline-flex;
+  align-items: center;
+  background: #eef1ff;
+  color: #6366f1;
+  border: 1px solid #c7d2fe;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  white-space: nowrap;
 }
 
 /* Typing indicator */

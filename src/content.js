@@ -3705,10 +3705,23 @@
 
   function buildMessageHTML(message) {
     if (message.role === 'user') {
+      // Build context pills for any # called folders
+      let contextPillsHTML = '';
+      if (message.calledFolderIds && message.calledFolderIds.length > 0) {
+        const pills = message.calledFolderIds.map(id => {
+          if (id === 'all') return `<span class="noodle-ai-ctx-pill">#All snippets</span>`;
+          const folder = folders.find(f => f.id === id);
+          return folder ? `<span class="noodle-ai-ctx-pill">#${escapeHtml(folder.name)}</span>` : '';
+        }).filter(Boolean).join('');
+        if (pills) {
+          contextPillsHTML = `<div class="noodle-ai-ctx-row"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span class="noodle-ai-ctx-label">Context</span>${pills}</div>`;
+        }
+      }
       return `
         <div class="noodle-ai-message user">
           ${escapeHtml(message.content)}
         </div>
+        ${contextPillsHTML}
       `;
     }
 
@@ -4290,7 +4303,8 @@
       role: 'user',
       content: text,
       timestamp: new Date().toISOString(),
-      command: command?.name || null
+      command: command?.name || null,
+      calledFolderIds: mentionIds.length > 0 ? [...mentionIds] : null
     });
     chat.updatedAt = new Date().toISOString();
     saveChatHistory();
@@ -4776,7 +4790,7 @@ You also have access to a web search tool. Use it proactively to find current, r
       <div class="noodle-ai-command-item" data-folder-id="all" data-folder-name="All snippets">
         ${folderIcon}
         <div class="noodle-ai-command-text">
-          <span class="noodle-ai-command-name">@All snippets</span>
+          <span class="noodle-ai-command-name">#All snippets</span>
           <span class="noodle-ai-command-desc">${snippets.length} snippets across all projects</span>
         </div>
       </div>
@@ -4788,7 +4802,7 @@ You also have access to a web search tool. Use it proactively to find current, r
         <div class="noodle-ai-command-item" data-folder-id="${f.id}" data-folder-name="${escapeHtml(f.name)}">
           ${folderIcon}
           <div class="noodle-ai-command-text">
-            <span class="noodle-ai-command-name">@${escapeHtml(f.name)}</span>
+            <span class="noodle-ai-command-name">#${escapeHtml(f.name)}</span>
             <span class="noodle-ai-command-desc">${count} snippet${count !== 1 ? 's' : ''}</span>
           </div>
         </div>
@@ -4808,7 +4822,7 @@ You also have access to a web search tool. Use it proactively to find current, r
     const chip = document.createElement('span');
     chip.className = 'noodle-ai-active-mention-chip';
     chip.dataset.folderId = folderId;
-    chip.innerHTML = `@${escapeHtml(folderName)}<button class="noodle-ai-active-cmd-remove" title="Remove">&times;</button>`;
+    chip.innerHTML = `#${escapeHtml(folderName)}<button class="noodle-ai-active-cmd-remove" title="Remove">&times;</button>`;
 
     chip.querySelector('.noodle-ai-active-cmd-remove').addEventListener('click', () => {
       chip.remove();
@@ -4831,8 +4845,8 @@ You also have access to a web search tool. Use it proactively to find current, r
     const commandsContainer = sidebar?.querySelector('.noodle-ai-commands-wrap');
     if (!commandsContainer) return;
 
-    // Detect @ trigger — find the last @ in the text
-    const atMatch = text.match(/@([\w\s]*)$/);
+    // Detect # trigger — find the last # in the text (call mode)
+    const atMatch = text.match(/#([\w\s]*)$/);
     if (atMatch) {
       const partial = atMatch[1].toLowerCase();
       const matchingFolders = folders.filter(f =>
@@ -4843,8 +4857,8 @@ You also have access to a web search tool. Use it proactively to find current, r
       // Wire up folder selection
       commandsContainer.querySelectorAll('.noodle-ai-command-item[data-folder-id]').forEach(item => {
         item.addEventListener('click', () => {
-          // Strip the @partial from the textarea
-          inputEl.value = text.replace(/@[\w\s]*$/, '');
+          // Strip the #partial from the textarea
+          inputEl.value = text.replace(/#[\w\s]*$/, '');
           commandsContainer.style.display = 'none';
           addMentionChip(inputEl, item.dataset.folderId, item.dataset.folderName);
           inputEl.focus();
