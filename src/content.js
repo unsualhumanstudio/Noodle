@@ -1108,9 +1108,11 @@
     // Render into a plain (non-contenteditable) sibling div so click events
     // on buttons work without any contenteditable interference.
     const enhancedView = notesEl.parentElement?.querySelector('.noodle-task-editor-enhanced-view');
+    console.log('[Noodle] renderEnhancedSegments — enhancedView found:', !!enhancedView, 'segments:', JSON.stringify(segments));
 
     const liItems = segments.map(seg => {
       const hasRealSource = seg.source && seg.source.preview && seg.source.preview.trim().length > 0;
+      console.log('[Noodle] segment:', seg.text, '| hasRealSource:', hasRealSource, '| source:', JSON.stringify(seg.source));
       if (!hasRealSource) {
         return `<li>${escapeHtml(seg.text)}</li>`;
       }
@@ -1134,6 +1136,8 @@
       enhancedView.innerHTML = `<ul class="noodle-enhanced-list">${liItems}${mentionHtml}</ul>`;
       enhancedView.style.display = 'block';
       notesEl.style.display = 'none';
+      const btns = enhancedView.querySelectorAll('.noodle-source-ref-btn');
+      console.log('[Noodle] source-ref-btn count after render:', btns.length);
       attachSourceHoverCards(enhancedView);
       attachMentionChipClicks(enhancedView);
     } else {
@@ -1160,6 +1164,7 @@
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        console.log('[Noodle] source-ref-btn clicked, dataset.source:', btn.dataset.source);
 
         // Toggle off if already open for this button
         if (btn === activeSourceSeg) { dismissSourceCard(); return; }
@@ -1167,8 +1172,15 @@
         dismissSourceCard();
 
         let source;
-        try { source = JSON.parse(btn.dataset.source || ''); } catch (ex) { return; }
-        if (!source || !source.preview || !source.preview.trim()) return;
+        try { source = JSON.parse(btn.dataset.source || ''); } catch (ex) {
+          console.log('[Noodle] JSON parse error:', ex);
+          return;
+        }
+        console.log('[Noodle] parsed source:', JSON.stringify(source));
+        if (!source || !source.preview || !source.preview.trim()) {
+          console.log('[Noodle] no preview, returning early');
+          return;
+        }
 
         const iconMap  = { page: '📄', snippet: '📁', user: '✏️' };
         const labelMap = { page: 'Page context', snippet: `#${source.folder || 'Folder'}`, user: 'Your notes' };
