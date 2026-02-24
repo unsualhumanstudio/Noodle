@@ -1149,7 +1149,7 @@
     // Attach directly to each button — delegation from a contenteditable=false
     // container is unreliable in Chrome (events don't bubble as expected)
     container.querySelectorAll('.noodle-source-ref-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('mousedown', (e) => {
         e.preventDefault();
         e.stopPropagation();
 
