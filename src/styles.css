@@ -3188,13 +3188,18 @@
   background: #eef1ff;
   border-bottom: 1.5px dotted #6c63ff;
   border-radius: 2px;
-  cursor: default;
+  cursor: pointer;
   transition: background 0.1s;
   padding: 0 1px;
 }
 
 .noodle-sourced-seg:hover {
   background: #dde2ff;
+}
+
+.noodle-sourced-seg.active {
+  background: #dde2ff;
+  border-bottom-style: solid;
 }
 
 /* ── Source hover card ── */

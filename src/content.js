@@ -851,6 +851,7 @@
 
     // ── Back button ──────────────────────────────────────────────────────────
     sidebar.querySelector('.noodle-task-editor-back-btn').addEventListener('click', () => {
+      dismissSourceCard();
       taskEditingId = null;
       clearTimeout(taskEditorSaveTimer);
       // Flush any unsaved title
@@ -1133,20 +1134,34 @@
     attachMentionChipClicks(notesEl);
   }
 
-  function attachSourceHoverCards(container) {
-    // Use event delegation on the container — more reliable than
-    // per-element mouseenter on spans inside a contenteditable=false div
-    let activeCard = null;
-    let activeSegEl = null;
+  // Track the currently open source card globally so we can dismiss it
+  let activeSourceCard = null;
+  let activeSourceSeg = null;
 
-    function showCard(seg) {
-      if (seg === activeSegEl) return; // already showing
-      removeCard();
+  function dismissSourceCard() {
+    activeSourceCard?.remove();
+    activeSourceCard = null;
+    activeSourceSeg = null;
+  }
+
+  function attachSourceHoverCards(container) {
+    // Click-based: clicking a sourced segment opens its card,
+    // clicking anywhere else (or the same segment again) closes it.
+    container.addEventListener('click', (e) => {
+      const seg = e.target.closest('.noodle-sourced-seg');
+
+      // Clicking outside a sourced seg → dismiss
+      if (!seg) { dismissSourceCard(); return; }
+
+      // Clicking the already-open seg → toggle off
+      if (seg === activeSourceSeg) { dismissSourceCard(); return; }
+
+      dismissSourceCard();
 
       const sourceStr = seg.dataset.source;
       if (!sourceStr) return;
       let source;
-      try { source = JSON.parse(sourceStr); } catch (e) { return; }
+      try { source = JSON.parse(sourceStr); } catch (ex) { return; }
       if (!source || !source.preview || !source.preview.trim()) return;
 
       const iconMap = { page: '📄', snippet: '📁', user: '✏️' };
@@ -1163,8 +1178,8 @@
         <div class="noodle-source-card-preview">${escapeHtml(source.preview)}</div>
       `;
 
-      // Render off-screen first to measure
-      card.style.cssText = 'position:fixed;left:0;top:-9999px;';
+      // Render off-screen first to get dimensions
+      card.style.cssText = 'position:fixed;left:0;top:-9999px;pointer-events:none;';
       document.body.appendChild(card);
 
       const rect = seg.getBoundingClientRect();
@@ -1174,11 +1189,11 @@
       let left = rect.left;
       let top = rect.bottom + 8;
 
-      // Clamp horizontally
+      // Clamp right edge
       if (left + cardW > window.innerWidth - 8) {
         left = Math.max(8, window.innerWidth - cardW - 8);
       }
-      // Flip above if not enough room below
+      // Flip above if too close to bottom
       if (top + cardH > window.innerHeight - 8) {
         top = rect.top - cardH - 8;
       }
@@ -1186,27 +1201,12 @@
       card.style.left = left + 'px';
       card.style.top = top + 'px';
 
-      activeCard = card;
-      activeSegEl = seg;
-    }
+      activeSourceCard = card;
+      activeSourceSeg = seg;
 
-    function removeCard() {
-      activeCard?.remove();
-      activeCard = null;
-      activeSegEl = null;
-    }
-
-    container.addEventListener('mouseover', (e) => {
-      const seg = e.target.closest('.noodle-sourced-seg');
-      if (seg && container.contains(seg)) {
-        showCard(seg);
-      } else {
-        removeCard();
-      }
-    });
-
-    container.addEventListener('mouseleave', () => {
-      removeCard();
+      // Mark active segment
+      container.querySelectorAll('.noodle-sourced-seg').forEach(s => s.classList.remove('active'));
+      seg.classList.add('active');
     });
   }
 
