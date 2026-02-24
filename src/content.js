@@ -1230,9 +1230,10 @@
           openBtn.addEventListener('mouseleave', () => openBtn.style.textDecoration = 'none');
           openBtn.addEventListener('click', (ev) => {
             ev.stopPropagation();
+            const preview = source.preview;
             dismissSourceCard();
             const folder = folders.find(f => f.name === folderName);
-            if (folder) renderProjectView(folder.id);
+            if (folder) renderProjectView(folder.id, preview);
           });
           card.appendChild(openBtn);
         } else if (source.type === 'page' && source.url) {
@@ -1438,7 +1439,9 @@
 
   // ─── Project View ─────────────────────────────────────────────────────────
 
-  function renderProjectView(folderId) {
+  // highlightPreview: optional source preview string — the snippet whose text
+  // contains this string will be scrolled into view and briefly flashed.
+  function renderProjectView(folderId, highlightPreview) {
     if (!sidebar) return;
     projectViewFolder = folderId;
 
@@ -1490,7 +1493,7 @@
           ${folderSnippets.length === 0
             ? '<p class="noodle-project-empty">No snippets yet</p>'
             : folderSnippets.map(s => `
-                <div class="noodle-project-snippet-item">
+                <div class="noodle-project-snippet-item noodle-project-snippet-clickable" data-snippet-id="${s.id}">
                   <span class="noodle-project-snippet-dot" style="background:${COLORS[s.color] || '#e5e7eb'}"></span>
                   <span class="noodle-project-snippet-text">${escapeHtml(s.text.substring(0, 120))}${s.text.length > 120 ? '…' : ''}</span>
                 </div>
@@ -1518,6 +1521,90 @@
         const tid = item.dataset.taskId;
         if (tid) renderTaskEditor(tid);
       });
+    });
+
+    // Click snippet → open snippet detail view
+    sidebar.querySelectorAll('.noodle-project-snippet-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const sid = item.dataset.snippetId;
+        if (sid) renderSnippetDetail(sid, folderId);
+      });
+    });
+
+    // Highlight the snippet that sourced the AI claim
+    if (highlightPreview) {
+      const preview = highlightPreview.toLowerCase();
+      const match = folderSnippets.find(s => s.text.toLowerCase().includes(preview));
+      if (match) {
+        const matchEl = sidebar.querySelector(`[data-snippet-id="${match.id}"]`);
+        if (matchEl) {
+          // Scroll into view then flash highlight
+          requestAnimationFrame(() => {
+            matchEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            matchEl.classList.add('noodle-snippet-highlight-flash');
+            setTimeout(() => matchEl.classList.remove('noodle-snippet-highlight-flash'), 1800);
+          });
+        }
+      }
+    }
+  }
+
+  // ─── Snippet Detail View ───────────────────────────────────────────────────
+
+  function renderSnippetDetail(snippetId, fromFolderId) {
+    if (!sidebar) return;
+
+    const snippet = snippets.find(s => s.id === snippetId);
+    if (!snippet) return;
+
+    const folder = folders.find(f => f.id === snippet.folderId);
+    const colorHex = COLORS[snippet.color] || '#e5e7eb';
+
+    // Format the captured date
+    const capturedDate = snippet.timestamp
+      ? new Date(snippet.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+      : null;
+
+    sidebar.innerHTML = `
+      <div class="noodle-sidebar-resize-handle"></div>
+      <div class="noodle-snippet-detail">
+        <div class="noodle-snippet-detail-header">
+          <button class="noodle-snippet-detail-back-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Back
+          </button>
+          ${folder ? `<span class="noodle-snippet-detail-folder-pill">#${escapeHtml(folder.name)}</span>` : ''}
+        </div>
+
+        <div class="noodle-snippet-detail-body">
+          <div class="noodle-snippet-detail-color-bar" style="background:${colorHex}"></div>
+          <p class="noodle-snippet-detail-text">${escapeHtml(snippet.text)}</p>
+        </div>
+
+        <div class="noodle-snippet-detail-meta">
+          ${capturedDate ? `<span class="noodle-snippet-detail-date">Captured ${capturedDate}</span>` : ''}
+          ${snippet.url ? `
+            <a class="noodle-snippet-detail-source" href="${escapeHtml(snippet.url)}" target="_blank" rel="noopener noreferrer">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              View source
+            </a>
+          ` : ''}
+        </div>
+
+        ${snippet.note ? `
+          <div class="noodle-snippet-detail-note">
+            <div class="noodle-snippet-detail-note-label">Note</div>
+            <p class="noodle-snippet-detail-note-text">${escapeHtml(snippet.note)}</p>
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    setupSidebarResize();
+
+    // Back → return to project view of the folder we came from
+    sidebar.querySelector('.noodle-snippet-detail-back-btn').addEventListener('click', () => {
+      renderProjectView(fromFolderId || snippet.folderId);
     });
   }
 
