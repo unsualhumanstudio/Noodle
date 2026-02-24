@@ -822,6 +822,7 @@
                contenteditable="true"
                data-placeholder="Add notes, use # to mention projects..."
                spellcheck="true">${task.notes || ''}</div>
+          <div class="noodle-task-editor-enhanced-view" style="display:none;"></div>
           <div class="noodle-task-editor-notes-footer">
             <div class="noodle-enhance-toggle" style="display:none;">
               <button class="noodle-enhance-ver-btn active" data-ver="enhanced">✨ Enhanced</button>
@@ -1073,10 +1074,11 @@
     // Render enhanced segments into notes
     renderEnhancedSegments(notesEl, segments, suggestedMentions);
 
-    // Save as task notes (plain text version for storage)
+    // Save enhanced HTML from the enhanced view div (notesEl is now hidden)
+    const enhancedViewEl = notesEl.parentElement?.querySelector('.noodle-task-editor-enhanced-view');
     const task = tasks.find(t => t.id === taskEditingId);
     if (task) {
-      task.notes = notesEl.innerHTML;
+      task.notes = enhancedViewEl ? enhancedViewEl.innerHTML : notesEl.innerHTML;
       saveTasks();
     }
 
@@ -1103,36 +1105,43 @@
   }
 
   function renderEnhancedSegments(notesEl, segments, suggestedMentions) {
-    // Each segment = one <li> bullet.
-    // Sourced segments get a * button at the end — clicking it shows the source card.
+    // Render into a plain (non-contenteditable) sibling div so click events
+    // on buttons work without any contenteditable interference.
+    const enhancedView = notesEl.parentElement?.querySelector('.noodle-task-editor-enhanced-view');
+
     const liItems = segments.map(seg => {
       const hasRealSource = seg.source && seg.source.preview && seg.source.preview.trim().length > 0;
       if (!hasRealSource) {
         return `<li>${escapeHtml(seg.text)}</li>`;
       }
       const sourceJson = escapeHtml(JSON.stringify(seg.source));
-      return `<li>${escapeHtml(seg.text)}<button class="noodle-source-ref-btn" data-source="${sourceJson}" title="View source" contenteditable="false"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12"/><path d="M17.196 9 6.804 15"/><path d="m6.804 9 10.392 6"/></svg></button></li>`;
+      return `<li>${escapeHtml(seg.text)}<button class="noodle-source-ref-btn" data-source="${sourceJson}" title="View source"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12"/><path d="M17.196 9 6.804 15"/><path d="m6.804 9 10.392 6"/></svg></button></li>`;
     }).join('');
 
-    // Suggested mention chips appended as a final li if any
+    // Suggested mention chips
     let mentionHtml = '';
     if (suggestedMentions && suggestedMentions.length > 0) {
       const chips = suggestedMentions.map(name => {
         const folder = folders.find(f => f.name === name);
         if (!folder) return '';
-        return `<span class="noodle-mention-chip" data-folder-id="${folder.id}" data-mention="${escapeHtml(folder.name)}" contenteditable="false">#${escapeHtml(folder.name)}</span>`;
+        return `<span class="noodle-mention-chip" data-folder-id="${folder.id}" data-mention="${escapeHtml(folder.name)}">#${escapeHtml(folder.name)}</span>`;
       }).filter(Boolean).join(' ');
       if (chips) mentionHtml = `<li class="noodle-mention-li">${chips}</li>`;
     }
 
-    notesEl.innerHTML = `<ul class="noodle-enhanced-list">${liItems}${mentionHtml}</ul>`;
-    notesEl.contentEditable = 'true'; // keep editable so user can tweak enhanced notes
-
-    // Attach hover cards to sourced segments
-    attachSourceHoverCards(notesEl);
-
-    // Attach mention chip clicks
-    attachMentionChipClicks(notesEl);
+    if (enhancedView) {
+      // Render into plain div — no contenteditable, no event conflicts
+      enhancedView.innerHTML = `<ul class="noodle-enhanced-list">${liItems}${mentionHtml}</ul>`;
+      enhancedView.style.display = 'block';
+      notesEl.style.display = 'none';
+      attachSourceHoverCards(enhancedView);
+      attachMentionChipClicks(enhancedView);
+    } else {
+      // Fallback: render directly into notesEl (old behaviour)
+      notesEl.innerHTML = `<ul class="noodle-enhanced-list">${liItems}${mentionHtml}</ul>`;
+      attachSourceHoverCards(notesEl);
+      attachMentionChipClicks(notesEl);
+    }
   }
 
   // Track the currently open source card globally so we can dismiss it
@@ -1146,10 +1155,9 @@
   }
 
   function attachSourceHoverCards(container) {
-    // Attach directly to each button — delegation from a contenteditable=false
-    // container is unreliable in Chrome (events don't bubble as expected)
+    // Buttons are in a plain div (not contenteditable), so regular click works fine.
     container.querySelectorAll('.noodle-source-ref-btn').forEach(btn => {
-      btn.addEventListener('mousedown', (e) => {
+      btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
 
@@ -1215,11 +1223,15 @@
     const toggleBtns = sidebar?.querySelectorAll('.noodle-enhance-ver-btn');
     toggleBtns?.forEach(b => b.classList.toggle('active', b.dataset.ver === ver));
 
+    const enhancedViewEl = notesEl.parentElement?.querySelector('.noodle-task-editor-enhanced-view');
+
     if (ver === 'original') {
-      // Restore original plain notes
+      // Show the contenteditable notes, hide the enhanced plain div
       notesEl.innerHTML = enhanceOriginalNotes || '';
+      notesEl.style.display = '';
+      if (enhancedViewEl) enhancedViewEl.style.display = 'none';
     } else {
-      // Re-render enhanced view
+      // Show enhanced plain div, hide the contenteditable
       if (enhanceSegments) {
         renderEnhancedSegments(notesEl, enhanceSegments, []);
       }

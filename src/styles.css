@@ -3156,6 +3156,16 @@
   border-color: #c8ccd4;
 }
 
+/* ── Enhanced view (plain div sibling to contenteditable) ── */
+.noodle-task-editor-enhanced-view {
+  flex: 1;
+  padding: 8px 12px;
+  overflow-y: auto;
+  font-size: 13px;
+  color: #2d3748;
+  line-height: 1.6;
+}
+
 /* ── Enhanced bullet list ── */
 .noodle-enhanced-list {
   margin: 0;
