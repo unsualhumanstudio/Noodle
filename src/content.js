@@ -1126,7 +1126,7 @@
     }
 
     notesEl.innerHTML = `<ul class="noodle-enhanced-list">${liItems}${mentionHtml}</ul>`;
-    notesEl.contentEditable = 'false'; // read-only while in enhanced view
+    notesEl.contentEditable = 'true'; // keep editable so user can tweak enhanced notes
 
     // Attach hover cards to sourced segments
     attachSourceHoverCards(notesEl);
@@ -1216,9 +1216,8 @@
     toggleBtns?.forEach(b => b.classList.toggle('active', b.dataset.ver === ver));
 
     if (ver === 'original') {
-      // Restore original plain notes, make editable
+      // Restore original plain notes
       notesEl.innerHTML = enhanceOriginalNotes || '';
-      notesEl.contentEditable = 'true';
     } else {
       // Re-render enhanced view
       if (enhanceSegments) {
