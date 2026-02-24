@@ -1187,7 +1187,9 @@
         if (!source || !source.preview || !source.preview.trim()) return;
 
         const iconMap  = { page: '📄', snippet: '📁', user: '✏️' };
-        const labelMap = { page: 'Page context', snippet: `#${source.folder || 'Folder'}`, user: 'Your notes' };
+        // Strip leading # from folder name if present (AI sometimes includes it)
+        const folderName = (source.folder || '').replace(/^#/, '');
+        const labelMap = { page: 'Page context', snippet: `#${folderName || 'Folder'}`, user: 'Your notes' };
 
         const rect = btn.getBoundingClientRect();
 
@@ -1202,7 +1204,7 @@
           'padding:10px 12px',
           'max-width:240px',
           'min-width:160px',
-          'pointer-events:none',
+          'cursor:default',
           'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
           `left:${Math.min(rect.left, window.innerWidth - 256)}px`,
           `top:${rect.bottom + 6}px`
@@ -1213,11 +1215,38 @@
         label.textContent = `${iconMap[source.type] || '📎'} ${labelMap[source.type] || source.type}`;
 
         const preview = document.createElement('div');
-        preview.style.cssText = 'font-size:12px;color:#374151;line-height:1.5;font-style:italic;';
+        preview.style.cssText = 'font-size:12px;color:#374151;line-height:1.5;font-style:italic;margin-bottom:8px;';
         preview.textContent = source.preview;
 
         card.appendChild(label);
         card.appendChild(preview);
+
+        // "Open" link — navigates to the snippet folder or source page
+        if (source.type === 'snippet' && folderName) {
+          const openBtn = document.createElement('button');
+          openBtn.textContent = `Open #${folderName} →`;
+          openBtn.style.cssText = 'display:block;width:100%;text-align:left;background:none;border:none;padding:0;font-size:11px;font-weight:600;color:#6366f1;cursor:pointer;font-family:inherit;';
+          openBtn.addEventListener('mouseenter', () => openBtn.style.textDecoration = 'underline');
+          openBtn.addEventListener('mouseleave', () => openBtn.style.textDecoration = 'none');
+          openBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            dismissSourceCard();
+            const folder = folders.find(f => f.name === folderName);
+            if (folder) renderProjectView(folder.id);
+          });
+          card.appendChild(openBtn);
+        } else if (source.type === 'page' && source.url) {
+          const openLink = document.createElement('a');
+          openLink.textContent = 'Open source page →';
+          openLink.href = source.url;
+          openLink.target = '_blank';
+          openLink.rel = 'noopener noreferrer';
+          openLink.style.cssText = 'display:block;font-size:11px;font-weight:600;color:#6366f1;text-decoration:none;';
+          openLink.addEventListener('mouseenter', () => openLink.style.textDecoration = 'underline');
+          openLink.addEventListener('mouseleave', () => openLink.style.textDecoration = 'none');
+          card.appendChild(openLink);
+        }
+
         document.body.appendChild(card);
 
         // Flip above if card goes off bottom of viewport
