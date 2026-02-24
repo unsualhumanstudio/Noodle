@@ -1146,69 +1146,67 @@
   }
 
   function attachSourceHoverCards(container) {
-    container.addEventListener('click', (e) => {
-      const btn = e.target.closest('.noodle-source-ref-btn');
+    // Attach directly to each button — delegation from a contenteditable=false
+    // container is unreliable in Chrome (events don't bubble as expected)
+    container.querySelectorAll('.noodle-source-ref-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
 
-      // Click anywhere that isn't a ref button → dismiss
-      if (!btn) { dismissSourceCard(); return; }
+        // Toggle off if already open for this button
+        if (btn === activeSourceSeg) { dismissSourceCard(); return; }
 
-      e.preventDefault();
-      e.stopPropagation();
+        dismissSourceCard();
 
-      // Toggle off if already open for this button
-      if (btn === activeSourceSeg) { dismissSourceCard(); return; }
+        let source;
+        try { source = JSON.parse(btn.dataset.source || ''); } catch (ex) { return; }
+        if (!source || !source.preview || !source.preview.trim()) return;
 
-      dismissSourceCard();
+        const iconMap  = { page: '📄', snippet: '📁', user: '✏️' };
+        const labelMap = { page: 'Page context', snippet: `#${source.folder || 'Folder'}`, user: 'Your notes' };
 
-      let source;
-      try { source = JSON.parse(btn.dataset.source || ''); } catch (ex) { return; }
-      if (!source || !source.preview || !source.preview.trim()) return;
+        const rect = btn.getBoundingClientRect();
 
-      const iconMap  = { page: '📄', snippet: '📁', user: '✏️' };
-      const labelMap = { page: 'Page context', snippet: `#${source.folder || 'Folder'}`, user: 'Your notes' };
+        const card = document.createElement('div');
+        card.style.cssText = [
+          'position:fixed',
+          'z-index:2147483647',
+          'background:#ffffff',
+          'border:1px solid #e2e5ea',
+          'border-radius:8px',
+          'box-shadow:0 4px 16px rgba(0,0,0,0.15)',
+          'padding:10px 12px',
+          'max-width:240px',
+          'min-width:160px',
+          'pointer-events:none',
+          'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+          `left:${Math.min(rect.left, window.innerWidth - 256)}px`,
+          `top:${rect.bottom + 6}px`
+        ].join(';');
 
-      const rect = btn.getBoundingClientRect();
+        const label = document.createElement('div');
+        label.style.cssText = 'font-size:11px;font-weight:600;color:#6b7280;margin-bottom:5px;letter-spacing:0.02em;';
+        label.textContent = `${iconMap[source.type] || '📎'} ${labelMap[source.type] || source.type}`;
 
-      const card = document.createElement('div');
-      card.style.cssText = [
-        'position:fixed',
-        'z-index:2147483647',
-        'background:#ffffff',
-        'border:1px solid #e2e5ea',
-        'border-radius:8px',
-        'box-shadow:0 4px 16px rgba(0,0,0,0.15)',
-        'padding:10px 12px',
-        'max-width:240px',
-        'min-width:160px',
-        'pointer-events:none',
-        'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-        `left:${Math.min(rect.left, window.innerWidth - 256)}px`,
-        `top:${rect.bottom + 6}px`
-      ].join(';');
+        const preview = document.createElement('div');
+        preview.style.cssText = 'font-size:12px;color:#374151;line-height:1.5;font-style:italic;';
+        preview.textContent = source.preview;
 
-      const label = document.createElement('div');
-      label.style.cssText = 'font-size:11px;font-weight:600;color:#6b7280;margin-bottom:5px;letter-spacing:0.02em;';
-      label.textContent = `${iconMap[source.type] || '📎'} ${labelMap[source.type] || source.type}`;
+        card.appendChild(label);
+        card.appendChild(preview);
+        document.body.appendChild(card);
 
-      const preview = document.createElement('div');
-      preview.style.cssText = 'font-size:12px;color:#374151;line-height:1.5;font-style:italic;';
-      preview.textContent = source.preview;
+        // Flip above if card goes off bottom of viewport
+        if (rect.bottom + 6 + card.offsetHeight > window.innerHeight - 8) {
+          card.style.top = (rect.top - card.offsetHeight - 6) + 'px';
+        }
 
-      card.appendChild(label);
-      card.appendChild(preview);
-      document.body.appendChild(card);
+        activeSourceCard = card;
+        activeSourceSeg = btn;
 
-      // Flip above if card goes off bottom of viewport
-      if (rect.bottom + 6 + card.offsetHeight > window.innerHeight - 8) {
-        card.style.top = (rect.top - card.offsetHeight - 6) + 'px';
-      }
-
-      activeSourceCard = card;
-      activeSourceSeg = btn;
-
-      // Mark active button
-      container.querySelectorAll('.noodle-source-ref-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+        container.querySelectorAll('.noodle-source-ref-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
     });
   }
 

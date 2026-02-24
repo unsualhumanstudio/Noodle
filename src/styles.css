@@ -3185,20 +3185,26 @@
 
 /* ── Source reference button (*) ── */
 .noodle-source-ref-btn {
-  display: inline-block;
-  margin-left: 3px;
-  padding: 0 2px;
-  background: none;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15.8px;
+  height: 15.8px;
+  margin-left: 4px;
+  padding: 0;
+  background: #eef1ff;
+  border: 1px solid #c7c2ff;
+  border-radius: 50%;
   color: #6c63ff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
-  vertical-align: super;
-  opacity: 0.7;
-  transition: opacity 0.1s, color 0.1s;
+  vertical-align: middle;
+  opacity: 0.8;
+  transition: opacity 0.1s, background 0.1s;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .noodle-source-ref-btn:hover {
