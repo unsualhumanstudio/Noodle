@@ -3183,23 +3183,32 @@
   border-top: 1px solid #eaecef;
 }
 
-/* ── Sourced segments (Granola-style) ── */
-.noodle-sourced-seg {
-  background: #eef1ff;
-  border-bottom: 1.5px dotted #6c63ff;
-  border-radius: 2px;
+/* ── Source reference button (*) ── */
+.noodle-source-ref-btn {
+  display: inline-block;
+  margin-left: 3px;
+  padding: 0 2px;
+  background: none;
+  border: none;
+  color: #6c63ff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
   cursor: pointer;
-  transition: background 0.1s;
-  padding: 0 1px;
+  vertical-align: super;
+  opacity: 0.7;
+  transition: opacity 0.1s, color 0.1s;
+  user-select: none;
 }
 
-.noodle-sourced-seg:hover {
-  background: #dde2ff;
+.noodle-source-ref-btn:hover {
+  opacity: 1;
+  color: #4e46d4;
 }
 
-.noodle-sourced-seg.active {
-  background: #dde2ff;
-  border-bottom-style: solid;
+.noodle-source-ref-btn.active {
+  opacity: 1;
+  color: #4e46d4;
 }
 
 /* ── Source hover card ── */

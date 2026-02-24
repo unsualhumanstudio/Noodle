@@ -1103,14 +1103,15 @@
   }
 
   function renderEnhancedSegments(notesEl, segments, suggestedMentions) {
-    // Each segment = one <li> bullet. Only underline if source has a real preview.
+    // Each segment = one <li> bullet.
+    // Sourced segments get a * button at the end — clicking it shows the source card.
     const liItems = segments.map(seg => {
       const hasRealSource = seg.source && seg.source.preview && seg.source.preview.trim().length > 0;
       if (!hasRealSource) {
         return `<li>${escapeHtml(seg.text)}</li>`;
       }
       const sourceJson = escapeHtml(JSON.stringify(seg.source));
-      return `<li><span class="noodle-sourced-seg" data-source="${sourceJson}">${escapeHtml(seg.text)}</span></li>`;
+      return `<li>${escapeHtml(seg.text)}<button class="noodle-source-ref-btn" data-source="${sourceJson}" title="View source" contenteditable="false">*</button></li>`;
     }).join('');
 
     // Suggested mention chips appended as a final li if any
@@ -1146,24 +1147,28 @@
 
   function attachSourceHoverCards(container) {
     container.addEventListener('click', (e) => {
-      const seg = e.target.closest('.noodle-sourced-seg');
+      const btn = e.target.closest('.noodle-source-ref-btn');
 
-      if (!seg) { dismissSourceCard(); return; }
-      if (seg === activeSourceSeg) { dismissSourceCard(); return; }
+      // Click anywhere that isn't a ref button → dismiss
+      if (!btn) { dismissSourceCard(); return; }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Toggle off if already open for this button
+      if (btn === activeSourceSeg) { dismissSourceCard(); return; }
 
       dismissSourceCard();
 
-      // Parse source — dataset auto-unescapes HTML entities
       let source;
-      try { source = JSON.parse(seg.dataset.source || ''); } catch (ex) { return; }
+      try { source = JSON.parse(btn.dataset.source || ''); } catch (ex) { return; }
       if (!source || !source.preview || !source.preview.trim()) return;
 
       const iconMap  = { page: '📄', snippet: '📁', user: '✏️' };
       const labelMap = { page: 'Page context', snippet: `#${source.folder || 'Folder'}`, user: 'Your notes' };
 
-      const rect = seg.getBoundingClientRect();
+      const rect = btn.getBoundingClientRect();
 
-      // Build card with fully inline styles so page CSS can't interfere
       const card = document.createElement('div');
       card.style.cssText = [
         'position:fixed',
@@ -1178,7 +1183,7 @@
         'pointer-events:none',
         'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
         `left:${Math.min(rect.left, window.innerWidth - 256)}px`,
-        `top:${rect.bottom + 8}px`
+        `top:${rect.bottom + 6}px`
       ].join(';');
 
       const label = document.createElement('div');
@@ -1193,16 +1198,17 @@
       card.appendChild(preview);
       document.body.appendChild(card);
 
-      // Flip above if it goes off the bottom of the viewport
-      if (rect.bottom + 8 + card.offsetHeight > window.innerHeight - 8) {
-        card.style.top = (rect.top - card.offsetHeight - 8) + 'px';
+      // Flip above if card goes off bottom of viewport
+      if (rect.bottom + 6 + card.offsetHeight > window.innerHeight - 8) {
+        card.style.top = (rect.top - card.offsetHeight - 6) + 'px';
       }
 
       activeSourceCard = card;
-      activeSourceSeg = seg;
+      activeSourceSeg = btn;
 
-      container.querySelectorAll('.noodle-sourced-seg').forEach(s => s.classList.remove('active'));
-      seg.classList.add('active');
+      // Mark active button
+      container.querySelectorAll('.noodle-source-ref-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
     });
   }
 
