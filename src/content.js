@@ -1111,7 +1111,7 @@
         return `<li>${escapeHtml(seg.text)}</li>`;
       }
       const sourceJson = escapeHtml(JSON.stringify(seg.source));
-      return `<li>${escapeHtml(seg.text)}<button class="noodle-source-ref-btn" data-source="${sourceJson}" title="View source" contenteditable="false"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12"/><path d="M17.196 9 6.804 15"/><path d="m6.804 9 10.392 6"/></svg></button></li>`;
+      return `<li>${escapeHtml(seg.text)}<button class="noodle-source-ref-btn" data-source="${sourceJson}" title="View source" contenteditable="false"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12"/><path d="M17.196 9 6.804 15"/><path d="m6.804 9 10.392 6"/></svg></button></li>`;
     }).join('');
 
     // Suggested mention chips appended as a final li if any
