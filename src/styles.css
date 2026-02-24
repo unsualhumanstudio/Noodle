@@ -3222,6 +3222,63 @@
   margin-top: 8px;
   padding-top: 6px;
   border-top: 1px solid #eaecef;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.noodle-mention-li-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #9ca3af;
+  margin-right: 2px;
+}
+
+/* ── AI-suggested mention ghost chip ── */
+.noodle-mention-chip-suggested {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  color: #6366f1;
+  border: 1.5px dashed #a5b4fc;
+  border-radius: 4px;
+  padding: 1px 4px 1px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.noodle-mention-chip-accept,
+.noodle-mention-chip-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1;
+  font-family: inherit;
+  transition: color 0.1s;
+}
+
+.noodle-mention-chip-accept {
+  color: #6366f1;
+}
+
+.noodle-mention-chip-accept:hover {
+  color: #4338ca;
+}
+
+.noodle-mention-chip-dismiss {
+  color: #9ca3af;
+}
+
+.noodle-mention-chip-dismiss:hover {
+  color: #6b7280;
 }
 
 /* ── Source reference button (asterisk icon) ── */

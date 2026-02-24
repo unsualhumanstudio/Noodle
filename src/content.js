@@ -1131,21 +1131,70 @@
       ul.appendChild(li);
     });
 
-    // Suggested mention chips as a final li
-    if (suggestedMentions && suggestedMentions.length > 0) {
+    // AI-suggested mention ghost chips — filter out folders already seeded by user
+    const alreadyMentioned = new Set(
+      [...(notesEl.innerHTML || '').matchAll(/data-mention="([^"]+)"/g)].map(m => m[1])
+    );
+    const newSuggestions = (suggestedMentions || []).filter(name => !alreadyMentioned.has(name));
+
+    if (newSuggestions.length > 0) {
       const mentionLi = document.createElement('li');
       mentionLi.className = 'noodle-mention-li';
-      suggestedMentions.forEach(name => {
+
+      const label = document.createElement('span');
+      label.className = 'noodle-mention-li-label';
+      label.textContent = 'AI suggests:';
+      mentionLi.appendChild(label);
+
+      newSuggestions.forEach(name => {
         const folder = folders.find(f => f.name === name);
         if (!folder) return;
-        const chip = document.createElement('span');
-        chip.className = 'noodle-mention-chip';
-        chip.dataset.folderId = folder.id;
-        chip.dataset.mention = folder.name;
-        chip.textContent = `#${folder.name}`;
-        mentionLi.appendChild(chip);
+
+        const ghost = document.createElement('span');
+        ghost.className = 'noodle-mention-chip-suggested';
+        ghost.dataset.folderId = folder.id;
+        ghost.dataset.mention = folder.name;
+
+        const chipText = document.createElement('span');
+        chipText.textContent = `#${folder.name}`;
+        ghost.appendChild(chipText);
+
+        // Accept button
+        const acceptBtn = document.createElement('button');
+        acceptBtn.className = 'noodle-mention-chip-accept';
+        acceptBtn.title = 'Accept suggestion';
+        acceptBtn.textContent = '✓';
+        acceptBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          acceptSuggestedMention(folder, notesEl);
+          ghost.remove();
+          // Remove the label if no ghost chips remain
+          if (!mentionLi.querySelector('.noodle-mention-chip-suggested')) {
+            mentionLi.remove();
+          }
+        });
+
+        // Dismiss button
+        const dismissBtn = document.createElement('button');
+        dismissBtn.className = 'noodle-mention-chip-dismiss';
+        dismissBtn.title = 'Dismiss suggestion';
+        dismissBtn.textContent = '✕';
+        dismissBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          ghost.remove();
+          if (!mentionLi.querySelector('.noodle-mention-chip-suggested')) {
+            mentionLi.remove();
+          }
+        });
+
+        ghost.appendChild(acceptBtn);
+        ghost.appendChild(dismissBtn);
+        mentionLi.appendChild(ghost);
       });
-      if (mentionLi.children.length > 0) ul.appendChild(mentionLi);
+
+      if (mentionLi.querySelectorAll('.noodle-mention-chip-suggested').length > 0) {
+        ul.appendChild(mentionLi);
+      }
     }
 
     const target = enhancedView || notesEl;
@@ -1432,6 +1481,32 @@
       notesEl.removeEventListener('keydown', notesEl._hashKeyHandler, true);
       notesEl._hashKeyHandler = null;
     }
+  }
+
+  // Accepts an AI-suggested mention: appends a solid chip to the notesEl
+  // contenteditable (same as a user-placed chip) and saves.
+  function acceptSuggestedMention(folder, notesEl) {
+    const chip = document.createElement('span');
+    chip.className = 'noodle-mention-chip';
+    chip.dataset.folderId = folder.id;
+    chip.dataset.mention = folder.name;
+    chip.contentEditable = 'false';
+    chip.textContent = '#' + folder.name;
+
+    // Append a spacer + chip to the end of the contenteditable notes
+    const spacer = document.createTextNode('\u00A0');
+    notesEl.appendChild(spacer);
+    notesEl.appendChild(chip);
+    notesEl.appendChild(document.createTextNode('\u00A0'));
+
+    // Save
+    const task = tasks.find(t => t.id === taskEditingId);
+    if (task) {
+      task.notes = notesEl.innerHTML;
+      saveTasks();
+    }
+
+    attachMentionChipClicks(notesEl);
   }
 
   function attachMentionChipClicks(container) {
