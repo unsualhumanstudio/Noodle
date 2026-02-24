@@ -1074,11 +1074,11 @@
     // Render enhanced segments into notes
     renderEnhancedSegments(notesEl, segments, suggestedMentions);
 
-    // Save enhanced HTML from the enhanced view div (notesEl is now hidden)
-    const enhancedViewEl = notesEl.parentElement?.querySelector('.noodle-task-editor-enhanced-view');
+    // Keep task.notes as the original (notesEl) content — it still holds the
+    // user's solid chips and original text. The enhanced view is display-only.
     const task = tasks.find(t => t.id === taskEditingId);
     if (task) {
-      task.notes = enhancedViewEl ? enhancedViewEl.innerHTML : notesEl.innerHTML;
+      task.notes = enhanceOriginalNotes || notesEl.innerHTML;
       saveTasks();
     }
 
@@ -1109,6 +1109,13 @@
     // on buttons work without any contenteditable interference.
     const enhancedView = notesEl.parentElement?.querySelector('.noodle-task-editor-enhanced-view');
 
+    // Snapshot existing solid user-placed chips from notesEl BEFORE rendering
+    // so we can display them in the enhanced view without losing them.
+    const existingChips = [...notesEl.querySelectorAll('.noodle-mention-chip')].map(c => ({
+      folderId: c.dataset.folderId,
+      name: c.dataset.mention
+    }));
+
     // Build the list in JS DOM — never serialize source JSON into HTML attributes,
     // which breaks when the JSON contains quotes that escapeHtml mangles.
     const ul = document.createElement('ul');
@@ -1131,70 +1138,79 @@
       ul.appendChild(li);
     });
 
-    // AI-suggested mention ghost chips — filter out folders already seeded by user
-    const alreadyMentioned = new Set(
-      [...(notesEl.innerHTML || '').matchAll(/data-mention="([^"]+)"/g)].map(m => m[1])
-    );
-    const newSuggestions = (suggestedMentions || []).filter(name => !alreadyMentioned.has(name));
+    // Mentions row — show existing solid chips + AI ghost suggestions
+    const alreadyMentionedNames = new Set(existingChips.map(c => c.name));
+    const newSuggestions = (suggestedMentions || []).filter(name => !alreadyMentionedNames.has(name));
+    const hasAnything = existingChips.length > 0 || newSuggestions.length > 0;
 
-    if (newSuggestions.length > 0) {
+    if (hasAnything) {
       const mentionLi = document.createElement('li');
       mentionLi.className = 'noodle-mention-li';
 
-      const label = document.createElement('span');
-      label.className = 'noodle-mention-li-label';
-      label.textContent = 'AI suggests:';
-      mentionLi.appendChild(label);
-
-      newSuggestions.forEach(name => {
-        const folder = folders.find(f => f.name === name);
-        if (!folder) return;
-
-        const ghost = document.createElement('span');
-        ghost.className = 'noodle-mention-chip-suggested';
-        ghost.dataset.folderId = folder.id;
-        ghost.dataset.mention = folder.name;
-
-        const chipText = document.createElement('span');
-        chipText.textContent = `#${folder.name}`;
-        ghost.appendChild(chipText);
-
-        // Accept button
-        const acceptBtn = document.createElement('button');
-        acceptBtn.className = 'noodle-mention-chip-accept';
-        acceptBtn.title = 'Accept suggestion';
-        acceptBtn.textContent = '✓';
-        acceptBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          acceptSuggestedMention(folder, notesEl);
-          ghost.remove();
-          // Remove the label if no ghost chips remain
-          if (!mentionLi.querySelector('.noodle-mention-chip-suggested')) {
-            mentionLi.remove();
-          }
-        });
-
-        // Dismiss button
-        const dismissBtn = document.createElement('button');
-        dismissBtn.className = 'noodle-mention-chip-dismiss';
-        dismissBtn.title = 'Dismiss suggestion';
-        dismissBtn.textContent = '✕';
-        dismissBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          ghost.remove();
-          if (!mentionLi.querySelector('.noodle-mention-chip-suggested')) {
-            mentionLi.remove();
-          }
-        });
-
-        ghost.appendChild(acceptBtn);
-        ghost.appendChild(dismissBtn);
-        mentionLi.appendChild(ghost);
+      // Solid user chips — displayed read-only in enhanced view, still live in notesEl
+      existingChips.forEach(({ folderId, name }) => {
+        const chip = document.createElement('span');
+        chip.className = 'noodle-mention-chip';
+        chip.dataset.folderId = folderId;
+        chip.dataset.mention = name;
+        chip.textContent = `#${name}`;
+        mentionLi.appendChild(chip);
       });
 
-      if (mentionLi.querySelectorAll('.noodle-mention-chip-suggested').length > 0) {
-        ul.appendChild(mentionLi);
+      // Ghost AI suggestions
+      if (newSuggestions.length > 0) {
+        const label = document.createElement('span');
+        label.className = 'noodle-mention-li-label';
+        label.textContent = existingChips.length > 0 ? 'AI also suggests:' : 'AI suggests:';
+        mentionLi.appendChild(label);
+
+        newSuggestions.forEach(name => {
+          const folder = folders.find(f => f.name === name);
+          if (!folder) return;
+
+          const ghost = document.createElement('span');
+          ghost.className = 'noodle-mention-chip-suggested';
+          ghost.dataset.folderId = folder.id;
+          ghost.dataset.mention = folder.name;
+
+          const chipText = document.createElement('span');
+          chipText.textContent = `#${folder.name}`;
+          ghost.appendChild(chipText);
+
+          // Accept button
+          const acceptBtn = document.createElement('button');
+          acceptBtn.className = 'noodle-mention-chip-accept';
+          acceptBtn.title = 'Accept suggestion';
+          acceptBtn.textContent = '✓';
+          acceptBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            acceptSuggestedMention(folder, notesEl);
+            ghost.remove();
+            if (!mentionLi.querySelector('.noodle-mention-chip-suggested')) {
+              label.remove();
+            }
+          });
+
+          // Dismiss button
+          const dismissBtn = document.createElement('button');
+          dismissBtn.className = 'noodle-mention-chip-dismiss';
+          dismissBtn.title = 'Dismiss suggestion';
+          dismissBtn.textContent = '✕';
+          dismissBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            ghost.remove();
+            if (!mentionLi.querySelector('.noodle-mention-chip-suggested')) {
+              label.remove();
+            }
+          });
+
+          ghost.appendChild(acceptBtn);
+          ghost.appendChild(dismissBtn);
+          mentionLi.appendChild(ghost);
+        });
       }
+
+      ul.appendChild(mentionLi);
     }
 
     const target = enhancedView || notesEl;
