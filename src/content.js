@@ -109,6 +109,8 @@
       loadData(() => {
         // After data is loaded, check if we need to highlight something
         checkForHighlightRequest();
+        // Push current data to rū MCP server so #tags work immediately
+        chrome.runtime.sendMessage({ type: 'noodleSyncToRu', folders, snippets });
       });
 
       // Watch for our root being removed and re-inject
