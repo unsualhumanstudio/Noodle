@@ -420,6 +420,7 @@
     chrome.storage.local.set({ claudeHighlights: snippets }, () => {
       updateBadge();
       renderSnippets();
+      chrome.runtime.sendMessage({ type: 'noodleSyncToRu', folders, snippets });
     });
   }
 
@@ -442,6 +443,7 @@
   function saveFolders() {
     chrome.storage.local.set({ claudeFolders: folders }, () => {
       renderSidebar();
+      chrome.runtime.sendMessage({ type: 'noodleSyncToRu', folders, snippets });
     });
   }
 

@@ -8,8 +8,26 @@ chrome.permissions.contains({ origins: ['<all_urls>'] }, (hasPermission) => {
   chrome.storage.local.set({ noodleAllSites: hasPermission });
 });
 
+// Push Noodle folders + snippets to rū MCP server
+async function syncToRu(folders, snippets) {
+  try {
+    await fetch('http://localhost:27125/noodle/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folders: folders || [], snippets: snippets || [] })
+    });
+  } catch {
+    // rū not running — silent fail, no disruption to Noodle
+  }
+}
+
 // Listen for messages from content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'noodleSyncToRu') {
+    syncToRu(message.folders, message.snippets);
+    return false;
+  }
+
   if (message.type === 'requestAllSitesPermission') {
     chrome.permissions.request({
       origins: ['<all_urls>']
